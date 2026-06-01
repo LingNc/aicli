@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -17,17 +16,15 @@ import (
 
 // Client 是 OpenAI 兼容 API 客户端
 type Client struct {
-	cfg     *config.Config
-	http    *http.Client
-	Debug   bool
+	cfg  *config.Config
+	http *http.Client
 }
 
 // New 创建 LLM 客户端
 func New(cfg *config.Config) *Client {
 	return &Client{
-		cfg:   cfg,
-		http:  &http.Client{Timeout: 60 * time.Second},
-		Debug: cfg.Debug,
+		cfg:  cfg,
+		http: &http.Client{Timeout: 60 * time.Second},
 	}
 }
 
@@ -83,10 +80,8 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 		return nil, fmt.Errorf("序列化请求失败: %w", err)
 	}
 
-	if c.Debug {
-		fmt.Fprintf(os.Stderr, "[DEBUG] 请求 URL: %s\n", url)
-		fmt.Fprintf(os.Stderr, "[DEBUG] 请求体: %s\n", string(body))
-	}
+	config.DebugLog(c.cfg, "请求 URL: %s", url)
+	config.DebugLog(c.cfg, "请求体: %s", string(body))
 
 	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
@@ -121,9 +116,7 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 
 		var cr chatResponse
 		if err := json.Unmarshal([]byte(data), &cr); err != nil {
-			if c.Debug {
-				fmt.Fprintf(os.Stderr, "[DEBUG] 解析 SSE 失败: %v (data: %s)\n", err, data)
-			}
+			config.DebugLog(c.cfg, "解析 SSE 失败: %v (data: %s)", err, data)
 			continue
 		}
 
@@ -143,10 +136,8 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 		Duration:    time.Since(start),
 	}
 
-	if c.Debug {
-		fmt.Fprintf(os.Stderr, "[DEBUG] 完整响应: %s\n", result.FullContent)
-		fmt.Fprintf(os.Stderr, "[DEBUG] 耗时: %v\n", result.Duration)
-	}
+	config.DebugLog(c.cfg, "完整响应: %s", result.FullContent)
+	config.DebugLog(c.cfg, "耗时: %v", result.Duration)
 
 	return result, nil
 }

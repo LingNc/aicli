@@ -52,13 +52,6 @@ func showHelp() {
   ai 删除所有.tmp文件`)
 }
 
-// debugLog 打印调试日志
-func debugLog(debug bool, format string, args ...interface{}) {
-	if debug {
-		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
-	}
-}
-
 func main() {
 	// 1. 解析参数
 	debug, subcommand, subAction, userInput := parseArgs(os.Args[1:])
@@ -194,12 +187,10 @@ AFTER_STREAM:
 	fmt.Println()
 
 	// 15. 调试信息
-	if debug {
-		elapsed := time.Since(startTime)
-		debugLog(debug, "分类: %v", parseResult.Category)
-		debugLog(debug, "耗时: %v", elapsed)
-		debugLog(debug, "命令: %s", parseResult.Command)
-	}
+	elapsed := time.Since(startTime)
+	config.DebugLog(cfg, "分类: %v", parseResult.Category)
+	config.DebugLog(cfg, "耗时: %v", elapsed)
+	config.DebugLog(cfg, "命令: %s", parseResult.Command)
 
 	// 16. 规则引擎分类
 	engine := rules.NewEngine(cfg)

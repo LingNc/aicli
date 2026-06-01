@@ -1,11 +1,14 @@
 package config
 
 import (
+	"slices"
 	_ "embed"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
@@ -135,22 +138,50 @@ func SaveDefault() error {
 	return Save(cfg)
 }
 
-// Validate 验证配置必填字段
+// Validate 全面验证配置
 func Validate(cfg *Config) error {
+	var errs []string
+
+	// 1. API Key 非空（必填）
 	if cfg.APIKey == "" {
-		return fmt.Errorf("api_key 不能为空")
+		errs = append(errs, "api_key 不能为空")
+	} else if !strings.HasPrefix(cfg.APIKey, "sk-") && !strings.HasPrefix(cfg.APIKey, "org-") {
+		// 非强制，仅警告：常见 OpenAI/兼容 key 格式提醒
+		errs = append(errs, "警告: api_key 格式可能不正确（应以 sk- 或 org- 开头），请检查")
 	}
+
+	// 2. BaseURL 非空且为有效 URL
 	if cfg.BaseURL == "" {
-		return fmt.Errorf("base_url 不能为空")
+		errs = append(errs, "base_url 不能为空")
+	} else if u, err := url.Parse(cfg.BaseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		errs = append(errs, "base_url 不是有效的 HTTP/HTTPS URL")
 	}
+
+	// 3. Model 非空
 	if cfg.Model == "" {
-		return fmt.Errorf("model 不能为空")
-	}
+		errs = append(errs, "model 不能为空")
+	} // 可选：检查是否在已知模型列表，但模型名不断更新，仅非空即可
+
+	// 4. Mode 合法
 	switch cfg.Mode {
 	case "ai", "rules", "permissive":
-		// 合法
+		// ok
 	default:
-		return fmt.Errorf("mode 必须是 ai/rules/permissive，当前: %s", cfg.Mode)
+		errs = append(errs, "mode 必须是 ai/rules/permissive，当前: "+cfg.Mode)
+	}
+
+	// 5. 检查白名单有无重复（自动去重即可，但也可提示）
+	seen := make(map[string]bool)
+	for _, w := range cfg.Whitelist {
+		if seen[w] {
+			errs = append(errs, "白名单中存在重复命令: "+w)
+		}
+		seen[w] = true
+	}
+
+	// 6. Debug 字段是 bool，无需检查
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "\n"))
 	}
 	return nil
 }
@@ -291,13 +322,18 @@ EDITOR:
 	return nil
 }
 
+// DebugLog 输出调试日志到 stderr
+func DebugLog(cfg *Config, format string, args ...interface{}) {
+	if cfg.Debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
+	}
+}
+
 // AddToWhitelist 添加命令到白名单（去重后追加）
 func (cfg *Config) AddToWhitelist(baseName string) {
-	for _, name := range cfg.Whitelist {
-		if name == baseName {
+	if slices.Contains(cfg.Whitelist, baseName) {
 			return
 		}
-	}
 	cfg.Whitelist = append(cfg.Whitelist, baseName)
 	if err := Save(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "警告: 保存白名单失败: %v\n", err)
