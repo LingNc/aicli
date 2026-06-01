@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
 
@@ -154,27 +155,45 @@ func Validate(cfg *Config) error {
 	return nil
 }
 
-// promptRetry 处理验证失败后的重试选择
+// promptRetry 处理验证失败后的重试选择（单键输入，无需回车）
 // 返回: "retry"=重新编辑, "cancel"=放弃, "force"=强制保存
 func promptRetry(err error, configPath string, backup []byte) string {
-	for {
-		fmt.Printf("错误: %v\n", err)
-		fmt.Println("[e]重新编辑 / [x]放弃 / [f]强制保存")
+	fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+	fmt.Fprintf(os.Stderr, "[e]重新编辑 / [x]放弃 / [f]强制保存 ")
+
+	fd := int(os.Stdin.Fd())
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		// 非终端环境，fallback 到 Scanln
 		var choice string
 		fmt.Scanln(&choice)
-		switch choice {
-		case "e":
-			return "retry"
-		case "x":
+		if choice == "x" {
 			if len(backup) > 0 {
 				os.WriteFile(configPath, backup, 0600)
 			}
 			return "cancel"
-		case "f":
-			return "force"
-		default:
-			fmt.Println("请输入 e、x 或 f")
 		}
+		if choice == "f" {
+			return "force"
+		}
+		return "retry"
+	}
+	defer term.Restore(fd, oldState)
+
+	buf := make([]byte, 1)
+	os.Stdin.Read(buf)
+	fmt.Fprintln(os.Stderr)
+
+	switch buf[0] {
+	case 'x', 'X':
+		if len(backup) > 0 {
+			os.WriteFile(configPath, backup, 0600)
+		}
+		return "cancel"
+	case 'f', 'F':
+		return "force"
+	default:
+		return "retry"
 	}
 }
 
