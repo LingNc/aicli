@@ -2,7 +2,6 @@ package executor
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lingnc/aicli/internal/config"
+	"github.com/lingnc/aicli/internal/log"
 	"golang.org/x/term"
 )
 
@@ -19,12 +19,12 @@ import (
 func Confirm(category Category, cfg *config.Config) (bool, bool, error) {
 	// 检查 stdin 是否为终端
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		fmt.Fprintln(os.Stderr, "非终端环境，跳过确认")
+		log.Info("非终端环境，跳过确认")
 		return false, false, nil
 	}
 
 	// 打印确认提示
-	fmt.Fprintf(os.Stderr, "-> 请确认[a/y/N] ")
+	log.Info("-> 请确认[a/y/N] ")
 
 	fd := int(os.Stdin.Fd())
 
@@ -63,15 +63,15 @@ func Confirm(category Category, cfg *config.Config) (bool, bool, error) {
 	switch buf[0] {
 	case 'y', 'Y':
 		// 清空当前行：\033[2K 清除整行，\r 回到行首
-		fmt.Fprint(os.Stderr, "\033[2K\r")
+		log.ClearStderrLine()
 		return true, false, nil
 	case 'a', 'A':
 		// 清空当前行：\033[2K 清除整行，\r 回到行首
-		fmt.Fprint(os.Stderr, "\033[2K\r")
+		log.ClearStderrLine()
 		return true, true, nil
 	default:
 		// 清空当前行：\033[2K 清除整行，\r 回到行首
-		fmt.Fprint(os.Stderr, "\033[2K\r")
+		log.ClearStderrLine()
 		return false, false, nil
 	}
 }

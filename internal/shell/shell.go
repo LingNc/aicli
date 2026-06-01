@@ -6,6 +6,8 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+
+	"github.com/lingnc/aicli/internal/log"
 )
 
 // wrapper 是要注入到 shell rc 文件的 wrapper 函数
@@ -75,7 +77,7 @@ func Install() error {
 
 	// 检查是否已安装
 	if strings.Contains(content, installMarker) {
-		fmt.Printf("-> 已安装到 %s\n", rcPath)
+		log.Print("-> 已安装到 %s", rcPath)
 		return nil
 	}
 
@@ -90,7 +92,7 @@ func Install() error {
 		return fmt.Errorf("写入 wrapper 失败: %w", err)
 	}
 
-	fmt.Printf("-> 已安装到 %s，请运行 source %s 或重新打开终端\n", rcPath, rcPath)
+	log.Print("-> 已安装到 %s，请运行 source %s 或重新打开终端", rcPath, rcPath)
 	return nil
 }
 
@@ -111,7 +113,7 @@ func Uninstall() error {
 
 	// 检查是否已安装
 	if !strings.Contains(content, installMarker) {
-		fmt.Printf("未找到 ai shell 集成，跳过\n")
+		log.Print("未找到 ai shell 集成，跳过")
 		return nil
 	}
 
@@ -132,6 +134,6 @@ func Uninstall() error {
 		return fmt.Errorf("写入 %s 失败: %w", rcPath, err)
 	}
 
-	fmt.Printf("-> 已从 %s 移除\n", rcPath)
+	log.Print("-> 已从 %s 移除", rcPath)
 	return nil
 }

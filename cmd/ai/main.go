@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -42,7 +41,7 @@ func parseArgs(args []string) (debug bool, subcommand string, subAction string, 
 
 // showHelp 显示帮助信息
 func showHelp() {
-	fmt.Println(`用法: ai [-d] <查询>
+	log.Print(`用法: ai [-d] <查询>
 
 子命令:
   ai setup             配置 API 密钥和模型
@@ -56,16 +55,25 @@ func showHelp() {
 }
 
 func main() {
+	code := run()
+	path := log.Close()
+	if path != "" {
+		log.Info("-> 调试日志已保存: %s", path)
+	}
+	os.Exit(code)
+}
+
+func run() int {
 	// 1. 解析参数
 	debug, subcommand, subAction, userInput := parseArgs(os.Args[1:])
 
 	// 2. 处理 setup 子命令
 	if subcommand == "setup" {
 		if err := config.Setup(nil); err != nil {
-			fmt.Fprintf(os.Stderr, "-> %v\n", err)
-			os.Exit(4)
+			log.Error("-> %v", err)
+			return 4
 		}
-		os.Exit(0)
+		return 0
 	}
 
 	// 2.5 处理 shell 子命令
@@ -73,51 +81,54 @@ func main() {
 		switch subAction {
 		case "install":
 			if err := shell.Install(); err != nil {
-				fmt.Fprintf(os.Stderr, "安装失败: %v\n", err)
-				os.Exit(1)
+				log.Error("安装失败: %v", err)
+				return 1
 			}
 		case "uninstall":
 			if err := shell.Uninstall(); err != nil {
-				fmt.Fprintf(os.Stderr, "卸载失败: %v\n", err)
-				os.Exit(1)
+				log.Error("卸载失败: %v", err)
+				return 1
 			}
 		default:
-			fmt.Fprintln(os.Stderr, "用法: ai shell install | uninstall")
-			os.Exit(1)
+			log.Info("用法: ai shell install | uninstall")
+			return 1
 		}
-		os.Exit(0)
+		return 0
 	}
 
 	// 2.8 空参数优先显示 help
 	if userInput == "" {
 		showHelp()
-		os.Exit(0)
+		return 0
 	}
 
 	// 3. 检查配置文件，不存在则自动 Setup
 	if !config.Exists() {
-		fmt.Fprintln(os.Stderr, "配置文件不存在，正在引导设置...")
+		log.Info("配置文件不存在，正在引导设置...")
 		if err := config.Setup(nil); err != nil {
-			fmt.Fprintf(os.Stderr, "设置失败: %v\n", err)
-			os.Exit(4)
+			log.Error("设置失败: %v", err)
+			return 4
 		}
-		fmt.Fprintln(os.Stderr, "设置完成，正在继续...")
+		log.Info("设置完成，正在继续...")
 	}
 
 	// 4. 加载配置
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
-		os.Exit(4)
+		log.Error("加载配置失败: %v", err)
+		return 4
 	}
 
-	// 5. 设置调试模式（配置文件或 CLI 标志均可启用）
-	log.SetDebug(cfg.Debug || debug)
+	// 5. 初始化日志系统（配置文件或 CLI 标志均可启用）
+	if err := log.Init(cfg.Debug || debug, cfg.DebugLogConsole, cfg.DebugLogDir); err != nil {
+		log.Error("初始化日志失败: %v", err)
+		return 4
+	}
 
 	// 6. 验证配置
 	if err := config.Validate(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "配置验证失败，请运行 ai setup: %v\n", err)
-		os.Exit(4)
+		log.Error("配置验证失败，请运行 ai setup: %v", err)
+		return 4
 	}
 
 	// 8. 创建 LLM 客户端
@@ -147,16 +158,16 @@ func main() {
 				newCmd = strings.ReplaceAll(newCmd, "\r", "")
 				if newCmd != "" {
 					if !cmdPrefixShown {
-						fmt.Print("$ " + newCmd)
+						log.PrintRaw("$ " + newCmd)
 						cmdPrefixShown = true
 					} else {
-						fmt.Print(newCmd)
+						log.PrintRaw(newCmd)
 					}
 				}
 			}
 			// 命令完成后输出换行（仅一次），避免主 goroutine 输出的换行与流交错
 			if parser.CommandDone() && !cmdNewlinePrinted {
-				fmt.Println()
+				log.Print("")
 				cmdNewlinePrinted = true
 			}
 			// 在 callback 内部检查命令是否完成
@@ -182,11 +193,11 @@ func main() {
 		// 流结束但命令未通过 channel 发送（可能没有 #$ 前缀）
 		if streamErr != nil {
 			if strings.Contains(streamErr.Error(), "401") || strings.Contains(streamErr.Error(), "unauthorized") {
-				fmt.Fprintln(os.Stderr, "API key 无效，请运行 ai setup 重新配置")
+				log.Info("API key 无效，请运行 ai setup 重新配置")
 			} else {
-				fmt.Fprintf(os.Stderr, "请求失败: %v\n", streamErr)
+				log.Error("请求失败: %v", streamErr)
 			}
-			os.Exit(3)
+			return 3
 		}
 		// 流正常结束但分类未确定，使用 parser.Finish() 处理残余
 		result := parser.Finish()
@@ -197,8 +208,8 @@ func main() {
 	finalCategory := cmd.category
 
 	if finalCommand == "" {
-		fmt.Fprintln(os.Stderr, "AI 未生成命令")
-		os.Exit(3)
+		log.Info("AI 未生成命令")
+		return 3
 	}
 
 	// 15. 调试信息
@@ -218,23 +229,23 @@ func main() {
 		if reason == "" {
 			reason = "命令被安全规则禁止执行"
 		}
-		fmt.Fprintf(os.Stderr, "-> %s\n", reason)
-		os.Exit(2)
+		log.Info("-> %s", reason)
+		return 2
 
 	case rules.VerdictDangerous:
 		approved, addWhite, err := executor.Confirm(finalCategory, cfg)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "确认过程出错: %v\n", err)
-			os.Exit(1)
+			log.Error("确认过程出错: %v", err)
+			return 1
 		}
 		if !approved {
-			fmt.Fprintln(os.Stderr, "-> 已取消")
-			os.Exit(2)
+			log.Info("-> 已取消")
+			return 2
 		}
 		if addWhite {
 			baseName := executor.ExtractBaseName(finalCommand)
 			cfg.AddToWhitelist(baseName)
-			fmt.Fprintf(os.Stderr, "-> 已将 %s 加入白名单\n", baseName)
+			log.Info("-> 已将 %s 加入白名单", baseName)
 		}
 
 	case rules.VerdictSafe:
@@ -244,8 +255,8 @@ func main() {
 	// 18. 执行命令
 	_, exitCode, err := executor.Execute(finalCommand)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "命令执行失败: %v\n", err)
-		os.Exit(1)
+		log.Error("命令执行失败: %v", err)
+		return 1
 	}
 
 	// 19. 写入临时文件
@@ -260,8 +271,8 @@ func main() {
 
 	// 21. 根据退出码退出
 	if exitCode != 0 {
-		os.Exit(exitCode)
+		return exitCode
 	}
 
-	os.Exit(0)
+	return 0
 }

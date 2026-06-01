@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/lingnc/aicli/internal/log"
 	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
@@ -24,6 +25,8 @@ type Config struct {
 	Model             string   `yaml:"model"`
 	Mode              string   `yaml:"mode"`
 	Debug             bool     `yaml:"debug"`
+	DebugLogConsole   bool     `yaml:"debug_log_console"`
+	DebugLogDir       string   `yaml:"debug_log_dir"`
 	Whitelist         []string `yaml:"whitelist"`
 	ForbiddenPatterns []string `yaml:"forbidden_patterns"` // 用户扩展的禁止命令
 	DangerousPatterns []string `yaml:"dangerous_patterns"` // 用户扩展的需确认命令
@@ -224,19 +227,16 @@ func promptRetry(validationErr error, configPath string, backup []byte) string {
 
 		switch buf[0] {
 		case 'x', 'X':
-			fmt.Fprintf(os.Stderr, "")
 			if len(backup) > 0 {
 				os.WriteFile(configPath, backup, 0600)
 			}
 			return "cancel"
 		case 'f', 'F':
-			fmt.Fprintf(os.Stderr, "")
 			return "force"
 		case 'e', 'E', '\r', '\n':
-			fmt.Fprintf(os.Stderr, "")
 			return "retry"
 		default:
-			fmt.Fprintf(os.Stderr, "\a") // 只响铃，不输出任何字符
+			log.Bell() // 只响铃，不输出任何字符
 		}
 	}
 }
@@ -311,12 +311,12 @@ EDITOR:
 			}
 		}
 
-		fmt.Println("-> 配置已保存")
+		log.Print("-> 配置已保存")
 		break
 	}
 
 	if len(originalArgs) > 0 {
-		fmt.Println("继续执行原始命令...")
+		log.Print("继续执行原始命令...")
 	}
 
 	return nil
@@ -329,7 +329,7 @@ func (cfg *Config) AddToWhitelist(baseName string) {
 		}
 	cfg.Whitelist = append(cfg.Whitelist, baseName)
 	if err := Save(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 保存白名单失败: %v\n", err)
+		log.Warn("保存白名单失败: %v", err)
 	}
 }
 
