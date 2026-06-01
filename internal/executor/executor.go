@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -23,8 +24,8 @@ func Confirm(category Category, cfg *config.Config) (bool, bool, error) {
 		return false, false, nil
 	}
 
-	// 打印确认提示
-	log.Info("-> 请确认[a/y/N] ")
+	// 打印确认提示（直接输出，不加换行，避免 raw mode 下清行失败）
+	fmt.Fprintf(os.Stderr, "\r-> 请确认[a/y/N] ")
 
 	fd := int(os.Stdin.Fd())
 
