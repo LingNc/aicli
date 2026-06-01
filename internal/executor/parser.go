@@ -49,11 +49,17 @@ type Parser struct {
 	buf             string // 未消费的缓冲
 	Result          *Result
 	CurrentCategory Category // 实时更新的分类，在元数据读取完成后设置
+	CurrentCommand  string   // 实时更新的命令内容，在 StateCommand 状态中累积
 }
 
 // NewParser 创建解析器
 func NewParser() *Parser {
 	return &Parser{state: StatePrefix}
+}
+
+// CommandDone 命令是否已完整解析（状态已过 StateCommand，分类已确定）
+func (p *Parser) CommandDone() bool {
+	return p.state > StateCommand
 }
 
 // Feed 输入一个 chunk，返回本次新增的命令文本（用于流式输出）
@@ -90,6 +96,7 @@ func (p *Parser) Feed(chunk string) string {
 				// 输出分隔符之前的命令部分
 				newCmd.WriteString(p.buf[:idx])
 				p.command.WriteString(p.buf[:idx])
+				p.CurrentCommand = p.command.String()
 				p.buf = p.buf[idx+metaMarkerLen:] // 跳过 "\n#@ "
 				p.state = StateMetadata
 				continue
@@ -107,6 +114,7 @@ func (p *Parser) Feed(chunk string) string {
 			if safe > 0 {
 				newCmd.WriteString(p.buf[:safe])
 				p.command.WriteString(p.buf[:safe])
+				p.CurrentCommand = p.command.String()
 				p.buf = p.buf[safe:]
 			}
 			// 剩余字符保留在 buf 中等待更多数据
@@ -158,6 +166,7 @@ func (p *Parser) Finish() *Result {
 	case StateCommand:
 		if p.buf != "" {
 			p.command.WriteString(p.buf)
+			p.CurrentCommand = p.command.String()
 			p.buf = ""
 		}
 	case StateMetadata:
