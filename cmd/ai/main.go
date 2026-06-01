@@ -10,6 +10,7 @@ import (
 	"github.com/lingnc/aicli/internal/config"
 	"github.com/lingnc/aicli/internal/executor"
 	"github.com/lingnc/aicli/internal/llm"
+	"github.com/lingnc/aicli/internal/rules"
 	"github.com/lingnc/aicli/internal/shell"
 )
 
@@ -149,11 +150,21 @@ func main() {
 		debugLog(debug, "命令: %s", parseResult.Command)
 	}
 
-	// 15. 分类命令
-	action := executor.ClassifyCommand(parseResult.Command, parseResult.Category, cfg)
+	// 15. 规则引擎分类
+	engine := rules.NewEngine(cfg)
+	verdict := engine.Classify(parseResult.Command, cfg.Mode, parseResult.Category)
 
-	// 16. 需要确认时
-	if action == executor.ActionConfirm {
+	// 16. 根据分类结果处理
+	switch verdict {
+	case rules.VerdictForbidden:
+		reason := engine.ForbiddenReason(parseResult.Command)
+		if reason == "" {
+			reason = "命令被安全规则禁止执行"
+		}
+		fmt.Fprintf(os.Stderr, "✗ %s\n", reason)
+		os.Exit(2)
+
+	case rules.VerdictDangerous:
 		approved, addWhite, err := executor.Confirm(parseResult.Category, cfg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "确认过程出错: %v\n", err)
@@ -168,6 +179,9 @@ func main() {
 			cfg.AddToWhitelist(baseName)
 			fmt.Fprintf(os.Stderr, "✓ 已将 %s 加入白名单\n", baseName)
 		}
+
+	case rules.VerdictSafe:
+		// 直接执行，无操作
 	}
 
 	// 17. 执行命令

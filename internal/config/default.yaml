@@ -4,18 +4,52 @@ base_url: "https://api.openai.com"
 model: "gpt-4o"
 mode: "ai"           # ai | rules | permissive
 debug: false
+
+# ──── 用户白名单（ai 模式直接执行）────
 whitelist: []
 
-# 只读命令白名单 (rules 模式使用)
+# ──── 危险命令（追加到硬编码黑名单）────
+# 格式: 命令字符串前缀。命中则永远禁止执行。
+forbidden_patterns: []
+  # - "shutdown"
+  # - "reboot"
+
+# ──── 需确认命令（追加到硬编码列表）────
+# 格式: 命令字符串前缀。命中则强制用户二次确认。
+dangerous_patterns: []
+  # - "git push --force"
+  # - "docker rm -f"
+
+# ──── 只读命令（rules 模式直接执行）────
 readonly_commands:
+  # 文件查看
   - ls
   - cat
   - head
   - tail
+  - less
+  - more
+  - file
+  - stat
+  - wc
+  # 文本处理
   - grep
+  - egrep
+  - fgrep
+  - sort
+  - uniq
+  - diff
+  - cut
+  - tr
+  # 文件查找
   - find
+  - locate
+  - which
+  - whereis
+  # 系统信息
   - ps
   - top
+  - htop
   - free
   - df
   - du
@@ -23,23 +57,23 @@ readonly_commands:
   - ss
   - netstat
   - ip
+  - uname
+  - hostname
+  - date
+  - uptime
+  - who
+  - w
+  # 用户/权限
   - id
   - whoami
   - pwd
-  - echo
-  - date
-  - uname
-  - hostname
-  - wc
-  - sort
-  - uniq
-  - diff
-  - file
-  - stat
-  - which
-  - whereis
   - env
   - printenv
-  - systemctl status
+  # 输出
+  - echo
+  - printf
+  # systemd 只读
+  - systemctl
   - journalctl
+  # 内核日志
   - dmesg

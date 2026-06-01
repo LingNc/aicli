@@ -14,47 +14,6 @@ import (
 	"golang.org/x/term"
 )
 
-// Action 表示命令的分类动作
-type Action int
-
-const (
-	ActionExecute Action = iota // 直接执行
-	ActionConfirm               // 需要确认
-)
-
-// ClassifyCommand 根据命令类型和配置分类命令
-func ClassifyCommand(command string, category Category, cfg *config.Config) Action {
-	// 提取 baseName
-	baseName := ExtractBaseName(command)
-	if baseName == "" {
-		return ActionConfirm
-	}
-
-	// 根据 cfg.Mode 分支
-	switch cfg.Mode {
-	case "permissive":
-		return ActionExecute
-	case "rules":
-		// 遍历只读命令白名单
-		for _, cmd := range cfg.ReadonlyCommands {
-			if cmd == baseName {
-				return ActionExecute
-			}
-		}
-		return ActionConfirm
-	default: // "ai" 模式（默认）
-		// 先检查白名单
-		if cfg.IsWhitelisted(baseName) {
-			return ActionExecute
-		}
-		// CatRO 和 CatSudoRO 类别直接执行
-		if category == CatRO || category == CatSudoRO {
-			return ActionExecute
-		}
-		return ActionConfirm
-	}
-}
-
 // Confirm 请求用户确认是否执行命令
 // 返回: (是否执行, 是否加入白名单, error)
 func Confirm(category Category, cfg *config.Config) (bool, bool, error) {
