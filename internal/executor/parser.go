@@ -34,12 +34,13 @@ const (
 
 // Parser 是流式状态机解析器
 type Parser struct {
-	state    ParseState
-	command  strings.Builder
-	metadata strings.Builder
-	explain  strings.Builder
-	buf      string // 未消费的缓冲
-	Result   *Result
+	state          ParseState
+	command        strings.Builder
+	metadata       strings.Builder
+	explain        strings.Builder
+	buf            string // 未消费的缓冲
+	Result         *Result
+	CurrentCategory Category // 实时更新的分类，在元数据读取完成后设置
 }
 
 // NewParser 创建解析器
@@ -92,6 +93,7 @@ func (p *Parser) Feed(chunk string) string {
 			idx := strings.Index(p.buf, "\n")
 			if idx >= 0 {
 				p.metadata.WriteString(p.buf[:idx])
+				p.CurrentCategory = Category(strings.TrimSpace(p.metadata.String()))
 				p.buf = p.buf[idx+1:]
 				p.state = StateExplanation
 				continue
@@ -131,6 +133,7 @@ func (p *Parser) Finish() *Result {
 	}
 	if p.state == StateMetadata && p.buf != "" {
 		p.metadata.WriteString(p.buf)
+		p.CurrentCategory = Category(strings.TrimSpace(p.metadata.String()))
 		p.buf = ""
 	}
 

@@ -116,23 +116,55 @@ func main() {
 	// 10. 记录开始时间
 	startTime := time.Now()
 
-	// 11. 流式聊天
-	_, err = client.StreamChat(userInput, func(chunk string) {
-		newCmd := parser.Feed(chunk)
-		fmt.Print(newCmd)
-	})
+	// 11. 流式聊天，使用 goroutine 接收流
+	streamDone := make(chan error, 1)
 
-	// 12. 处理错误
-	if err != nil {
-		// 检查是否为 HTTP 401 错误
-		if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized") {
+	go func() {
+		_, err := client.StreamChat(userInput, func(chunk string) {
+			newCmd := parser.Feed(chunk)
+			fmt.Print(newCmd)
+		})
+		streamDone <- err
+	}()
+
+	// 12. 轮询等待分类确定或流结束
+	var streamErr error
+	for {
+		if parser.CurrentCategory != "" {
+			// 分类已确定，但不立即 break
+			// 继续等待流结束以避免数据竞争
+			break
+		}
+		select {
+		case streamErr = <-streamDone:
+			// 流结束但分类未确定
+			if streamErr != nil {
+				if strings.Contains(streamErr.Error(), "401") || strings.Contains(streamErr.Error(), "unauthorized") {
+					fmt.Fprintln(os.Stderr, "API key 无效，请运行 ai setup 重新配置")
+				} else {
+					fmt.Fprintf(os.Stderr, "请求失败: %v\n", streamErr)
+				}
+				os.Exit(3)
+			}
+			// 流正常结束但分类未确定，使用默认空分类继续
+			goto AFTER_STREAM
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	// 13. 分类已确定，等待流结束
+	streamErr = <-streamDone
+	if streamErr != nil {
+		if strings.Contains(streamErr.Error(), "401") || strings.Contains(streamErr.Error(), "unauthorized") {
 			fmt.Fprintln(os.Stderr, "API key 无效，请运行 ai setup 重新配置")
 		} else {
-			fmt.Fprintf(os.Stderr, "请求失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "请求失败: %v\n", streamErr)
 		}
 		os.Exit(3)
 	}
 
+AFTER_STREAM:
 	// 13. 完成解析
 	parseResult := parser.Finish()
 	if parseResult.Command == "" {
@@ -142,7 +174,7 @@ func main() {
 
 	fmt.Println()
 
-	// 14. 调试信息
+	// 15. 调试信息
 	if debug {
 		elapsed := time.Since(startTime)
 		debugLog(debug, "分类: %v", parseResult.Category)
@@ -150,11 +182,11 @@ func main() {
 		debugLog(debug, "命令: %s", parseResult.Command)
 	}
 
-	// 15. 规则引擎分类
+	// 16. 规则引擎分类
 	engine := rules.NewEngine(cfg)
 	verdict := engine.Classify(parseResult.Command, cfg.Mode, parseResult.Category)
 
-	// 16. 根据分类结果处理
+	// 17. 根据分类结果处理
 	switch verdict {
 	case rules.VerdictForbidden:
 		reason := engine.ForbiddenReason(parseResult.Command)
@@ -184,18 +216,18 @@ func main() {
 		// 直接执行，无操作
 	}
 
-	// 17. 执行命令
+	// 18. 执行命令
 	_, exitCode, err := executor.Execute(parseResult.Command)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "命令执行失败: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 18. 写入临时文件
+	// 19. 写入临时文件
 	tmpfile := "/tmp/ai-cmd-" + strconv.Itoa(os.Getppid()) + ".txt"
 	os.WriteFile(tmpfile, []byte(parseResult.Command), 0644)
 
-	// 19. 根据退出码退出
+	// 20. 根据退出码退出
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}

@@ -1,41 +1,83 @@
 package prompt
 
-// System 是发给 LLM 的系统 prompt
-const System = `你是一个 Linux 命令行助手。用户用自然语言描述需求，你生成对应的 shell 命令。
+import (
+	"fmt"
+	"os"
+	"os/user"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+)
 
-严格按以下格式返回，不要有任何多余文字、代码块标记或解释:
+// System 是发给 LLM 的系统 prompt 模板
+// %s 会被替换为系统信息
+const System = `你是终端助手，用户需要命令建议。返回可执行命令，只输出以下格式，无多余文字：
 
 <命令>
 #@ <分类>
 <简短说明>
 
-分类必须是以下之一:
-- ro: 纯查看命令 (ls, cat, grep, ps, free, df, lsof 等不修改系统的命令)
-- rw: 修改文件/系统状态 (rm, mv, chmod, git commit, apt install 等)
-- rm: 删除操作 (rm, find -delete 等删除文件/目录的命令)
-- sudo,ro: 需要 root 权限的只读操作
-- sudo,rw: 需要 root 权限的修改操作
-- sudo,rm: 需要 root 权限的删除操作
+分类：ro(只读)、rw(修改)、rm(删除)；如需 root 权限前缀 sudo, 如 sudo,ro。
+命令首字符非 # 或空格，不含 #@ 序列。说明 ≤30 字。
 
-规则:
-1. 第一个字符必须是命令内容，不要有任何前缀
-2. 命令中不要使用 #@ 序列
-3. 命令应简洁有效，优先使用系统已安装的工具
-4. 说明控制在 15 字以内
+%s`
 
-示例:
+// BuildSystemInfo 收集当前系统信息，构建 system prompt
+func BuildSystemInfo() string {
+	var info strings.Builder
 
-用户: 列出占用端口8085的程序
-lsof -i :8085
-#@ ro
-列出占用8085端口的进程
+	// 操作系统
+	osName := runtime.GOOS
+	if runtime.GOOS == "linux" {
+		// 尝试读取 /etc/os-release 获取发行版名
+		if data, err := os.ReadFile("/etc/os-release"); err == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				if strings.HasPrefix(line, "PRETTY_NAME=") {
+					osName = strings.Trim(strings.TrimPrefix(line, "PRETTY_NAME="), "\"")
+					break
+				}
+			}
+		}
+	} else if runtime.GOOS == "darwin" {
+		osName = "macOS"
+	} else if runtime.GOOS == "windows" {
+		osName = "Windows"
+	}
+	info.WriteString(fmt.Sprintf("系统: %s", osName))
 
-用户: 删除所有tmp文件
-find . -name "*.tmp" -delete
-#@ rm
-删除所有 .tmp 文件
+	// 架构
+	info.WriteString(fmt.Sprintf(" %s", runtime.GOARCH))
 
-用户: 查看nginx配置
-sudo cat /etc/nginx/nginx.conf
-#@ sudo,ro
-查看 nginx 配置文件`
+	// Shell
+	shell := os.Getenv("SHELL")
+	if shell == "" && runtime.GOOS == "windows" {
+		shell = os.Getenv("COMSPEC")
+		if shell == "" {
+			shell = "cmd"
+		}
+	}
+	if shell != "" {
+		info.WriteString(fmt.Sprintf("\nShell: %s", filepath.Base(shell)))
+	}
+
+	// 当前目录
+	if cwd, err := os.Getwd(); err == nil {
+		info.WriteString(fmt.Sprintf("\n目录: %s", cwd))
+	}
+
+	// 用户
+	if u, err := user.Current(); err == nil {
+		info.WriteString(fmt.Sprintf("\n用户: %s", u.Username))
+	}
+
+	// 主机名
+	if hostname, err := os.Hostname(); err == nil {
+		info.WriteString(fmt.Sprintf("\n主机: %s", hostname))
+	}
+
+	// 当前时间
+	info.WriteString(fmt.Sprintf("\n时间: %s", time.Now().Format("2006-01-02 15:04:05")))
+
+	return info.String()
+}

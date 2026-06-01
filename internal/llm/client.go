@@ -70,7 +70,7 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 	reqBody := chatRequest{
 		Model: c.cfg.Model,
 		Messages: []message{
-			{Role: "system", Content: prompt.System},
+			{Role: "system", Content: fmt.Sprintf(prompt.System, prompt.BuildSystemInfo())},
 			{Role: "user", Content: userInput},
 		},
 		Stream:      true,
