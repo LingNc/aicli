@@ -1,0 +1,45 @@
+# ai 默认配置
+api_key: ""
+base_url: "https://api.openai.com"
+model: "gpt-4o"
+mode: "ai"           # ai | rules | permissive
+debug: false
+whitelist: []
+
+# 只读命令白名单 (rules 模式使用)
+readonly_commands:
+  - ls
+  - cat
+  - head
+  - tail
+  - grep
+  - find
+  - ps
+  - top
+  - free
+  - df
+  - du
+  - lsof
+  - ss
+  - netstat
+  - ip
+  - id
+  - whoami
+  - pwd
+  - echo
+  - date
+  - uname
+  - hostname
+  - wc
+  - sort
+  - uniq
+  - diff
+  - file
+  - stat
+  - which
+  - whereis
+  - env
+  - printenv
+  - systemctl status
+  - journalctl
+  - dmesg

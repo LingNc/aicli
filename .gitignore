@@ -1,0 +1,14 @@
+# Binaries
+/ai
+/aicli
+
+# Sensitive / temp
+temp/
+
+# IDE
+*.code-workspace
+
+# Go build artifacts
+*.exe
+*.test
+*.out
