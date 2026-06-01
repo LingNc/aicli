@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lingnc/aicli/internal/config"
+	"github.com/lingnc/aicli/internal/log"
 	"github.com/lingnc/aicli/internal/prompt"
 )
 
@@ -80,8 +81,8 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 		return nil, fmt.Errorf("序列化请求失败: %w", err)
 	}
 
-	config.DebugLog(c.cfg, "请求 URL: %s", url)
-	config.DebugLog(c.cfg, "请求体: %s", string(body))
+	log.Debug("请求 URL: %s", url)
+	log.Debug("请求体: %s", string(body))
 
 	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
@@ -116,7 +117,7 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 
 		var cr chatResponse
 		if err := json.Unmarshal([]byte(data), &cr); err != nil {
-			config.DebugLog(c.cfg, "解析 SSE 失败: %v (data: %s)", err, data)
+			log.Debug("解析 SSE 失败: %v (data: %s)", err, data)
 			continue
 		}
 
@@ -136,8 +137,8 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 		Duration:    time.Since(start),
 	}
 
-	config.DebugLog(c.cfg, "完整响应: %s", result.FullContent)
-	config.DebugLog(c.cfg, "耗时: %v", result.Duration)
+	log.Debug("完整响应: %s", result.FullContent)
+	log.Debug("耗时: %v", result.Duration)
 
 	return result, nil
 }

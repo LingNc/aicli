@@ -322,13 +322,6 @@ EDITOR:
 	return nil
 }
 
-// DebugLog 输出调试日志到 stderr
-func DebugLog(cfg *Config, format string, args ...interface{}) {
-	if cfg.Debug {
-		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
-	}
-}
-
 // AddToWhitelist 添加命令到白名单（去重后追加）
 func (cfg *Config) AddToWhitelist(baseName string) {
 	if slices.Contains(cfg.Whitelist, baseName) {

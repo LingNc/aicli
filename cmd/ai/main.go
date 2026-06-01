@@ -10,6 +10,7 @@ import (
 	"github.com/lingnc/aicli/internal/config"
 	"github.com/lingnc/aicli/internal/executor"
 	"github.com/lingnc/aicli/internal/llm"
+	"github.com/lingnc/aicli/internal/log"
 	"github.com/lingnc/aicli/internal/rules"
 	"github.com/lingnc/aicli/internal/shell"
 )
@@ -108,10 +109,8 @@ func main() {
 		os.Exit(4)
 	}
 
-	// 5. 设置调试模式
-	if debug {
-		cfg.Debug = true
-	}
+	// 5. 设置调试模式（配置文件或 CLI 标志均可启用）
+	log.SetDebug(cfg.Debug || debug)
 
 	// 6. 验证配置
 	if err := config.Validate(cfg); err != nil {
@@ -188,9 +187,9 @@ AFTER_STREAM:
 
 	// 15. 调试信息
 	elapsed := time.Since(startTime)
-	config.DebugLog(cfg, "分类: %v", parseResult.Category)
-	config.DebugLog(cfg, "耗时: %v", elapsed)
-	config.DebugLog(cfg, "命令: %s", parseResult.Command)
+	log.Debug("分类: %v", parseResult.Category)
+	log.Debug("耗时: %v", elapsed)
+	log.Debug("命令: %s", parseResult.Command)
 
 	// 16. 规则引擎分类
 	engine := rules.NewEngine(cfg)
