@@ -150,7 +150,7 @@ func Fatal(format string, args ...interface{}) {
 // 调试模式下同时写入日志文件（带时间戳），不包含 ANSI 转义序列。
 func Print(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Print(msg)
+	fmt.Println(msg)
 	if logFile != nil {
 		mu.Lock()
 		defer mu.Unlock()

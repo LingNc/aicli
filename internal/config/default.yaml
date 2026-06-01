@@ -4,7 +4,7 @@ base_url: "https://api.openai.com"
 model: "gpt-4o"
 mode: "ai"           # ai | rules | permissive
 debug: false
-debug_log_console: true
+debug_log_console: false
 debug_log_dir: ""
 
 # ──── 用户白名单（ai 模式直接执行）────
