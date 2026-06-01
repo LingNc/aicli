@@ -24,7 +24,7 @@ func Confirm(category Category, cfg *config.Config) (bool, bool, error) {
 	}
 
 	// 打印确认提示
-	fmt.Fprintf(os.Stderr, "[a/y/N] ")
+	fmt.Fprintf(os.Stderr, "-> 请确认[a/y/N] ")
 
 	fd := int(os.Stdin.Fd())
 
@@ -48,15 +48,20 @@ func Confirm(category Category, cfg *config.Config) (bool, bool, error) {
 	// 读取用户输入
 	buf := make([]byte, 1)
 	os.Stdin.Read(buf)
-	fmt.Fprintln(os.Stderr)
 
 	// 判断用户输入
 	switch buf[0] {
 	case 'y', 'Y':
+		// 清空当前行：\033[2K 清除整行，\r 回到行首
+		fmt.Fprint(os.Stderr, "\033[2K\r")
 		return true, false, nil
 	case 'a', 'A':
+		// 清空当前行：\033[2K 清除整行，\r 回到行首
+		fmt.Fprint(os.Stderr, "\033[2K\r")
 		return true, true, nil
 	default:
+		// 清空当前行：\033[2K 清除整行，\r 回到行首
+		fmt.Fprint(os.Stderr, "\033[2K\r")
 		return false, false, nil
 	}
 }
