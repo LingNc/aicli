@@ -100,7 +100,9 @@ func loadDefault() (*Config, error) {
 // fillDefaults 用默认值填充空字段（基于反射，自动从 default.yaml 补全零值）
 func fillDefaults(cfg *Config) {
 	var defaults Config
-	yaml.Unmarshal(defaultYAML, &defaults)
+	if err := yaml.Unmarshal(defaultYAML, &defaults); err != nil {
+		return // 解析失败不填充，使用零值
+	}
 
 	cfgV := reflect.ValueOf(cfg).Elem()
 	defV := reflect.ValueOf(&defaults).Elem()
@@ -178,6 +180,11 @@ func Validate(cfg *Config) error {
 		// ok
 	default:
 		errs = append(errs, "mode 必须是 ai/rules/permissive，当前: "+cfg.Mode)
+	}
+
+	// 4b. ThinkingMode 合法
+	if cfg.ThinkingMode != "" && cfg.ThinkingMode != "disabled" && cfg.ThinkingMode != "enabled" {
+		errs = append(errs, fmt.Sprintf("thinking_mode 必须是 disabled/enabled，当前: %s", cfg.ThinkingMode))
 	}
 
 	// 5. 检查白名单有无重复（自动去重即可，但也可提示）

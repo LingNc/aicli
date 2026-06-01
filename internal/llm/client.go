@@ -76,6 +76,7 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 		MaxTokens:   1024,
 	}
 
+	// reqBody 是纯值类型，Marshal 必定成功
 	bodyBytes, _ := json.Marshal(reqBody)
 	var bodyMap map[string]any
 	_ = json.Unmarshal(bodyBytes, &bodyMap)
