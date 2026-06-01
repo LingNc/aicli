@@ -43,9 +43,11 @@ func parseArgs(args []string) (debug bool, subcommand string, subAction string, 
 // showHelp 显示帮助信息
 func showHelp() {
 	fmt.Println(`用法: ai [-d] <查询>
-      ai setup          配置 API 密钥和模型
-      ai shell install  安装 shell 集成
-      ai shell uninstall 卸载 shell 集成
+
+子命令:
+  ai setup             配置 API 密钥和模型
+  ai shell install     安装 shell 集成
+  ai shell uninstall   卸载 shell 集成
 
 示例:
   ai 查看内存
