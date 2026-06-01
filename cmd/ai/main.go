@@ -130,6 +130,12 @@ func main() {
 	startTime := time.Now()
 
 	// 11. 流式聊天，使用 goroutine 接收流
+	// 通过 channel 传递命令结果，避免主 goroutine 与流式 goroutine 之间的数据竞争
+	type cmdReady struct {
+		command  string
+		category executor.Category
+	}
+	cmdCh := make(chan cmdReady, 1)
 	streamDone := make(chan error, 1)
 
 	go func() {
@@ -139,43 +145,42 @@ func main() {
 				newCmd = strings.ReplaceAll(newCmd, "\r", "")
 				fmt.Print(newCmd)
 			}
+			// 在 callback 内部检查命令是否完成
+			// 如果刚完成，通过 channel 通知主 goroutine（避免主 goroutine 直接读取 parser 字段造成竞争）
+			// 用 len(cmdCh) == 0 避免后续 chunk 重复发送
+			if parser.CommandDone() && len(cmdCh) == 0 {
+				cmdCh <- cmdReady{
+					command:  parser.CurrentCommand,
+					category: parser.CurrentCategory,
+				}
+			}
 		})
 		streamDone <- err
 	}()
 
-	// 12. 轮询等待命令完整（分类确定）或流结束
+	// 12. 等待命令完成或流结束
+	var cmd cmdReady
 	var streamErr error
-	var finalCommand string
-	var finalCategory executor.Category
-	streamDoneReceived := false
-
-	for {
-		if parser.CommandDone() {
-			// 命令完整且分类已确定，不等流结束，立即使用 CurrentCommand/Category
-			finalCommand = parser.CurrentCommand
-			finalCategory = parser.CurrentCategory
-			break
-		}
-		select {
-		case streamErr = <-streamDone:
-			streamDoneReceived = true
-			if streamErr != nil {
-				if strings.Contains(streamErr.Error(), "401") || strings.Contains(streamErr.Error(), "unauthorized") {
-					fmt.Fprintln(os.Stderr, "API key 无效，请运行 ai setup 重新配置")
-				} else {
-					fmt.Fprintf(os.Stderr, "请求失败: %v\n", streamErr)
-				}
-				os.Exit(3)
+	select {
+	case cmd = <-cmdCh:
+		// 命令已完整，立即继续
+	case streamErr = <-streamDone:
+		// 流结束但命令未通过 channel 发送（可能没有 #$ 前缀）
+		if streamErr != nil {
+			if strings.Contains(streamErr.Error(), "401") || strings.Contains(streamErr.Error(), "unauthorized") {
+				fmt.Fprintln(os.Stderr, "API key 无效，请运行 ai setup 重新配置")
+			} else {
+				fmt.Fprintf(os.Stderr, "请求失败: %v\n", streamErr)
 			}
-			// 流正常结束但分类未确定，使用 parser.Finish() 处理残余
-			parseResult := parser.Finish()
-			finalCommand = parseResult.Command
-			finalCategory = parseResult.Category
-			break
-		default:
-			time.Sleep(10 * time.Millisecond)
+			os.Exit(3)
 		}
+		// 流正常结束但分类未确定，使用 parser.Finish() 处理残余
+		result := parser.Finish()
+		cmd = cmdReady{command: result.Command, category: result.Category}
 	}
+
+	finalCommand := cmd.command
+	finalCategory := cmd.category
 
 	if finalCommand == "" {
 		fmt.Fprintln(os.Stderr, "AI 未生成命令")
@@ -236,7 +241,8 @@ func main() {
 	os.WriteFile(tmpfile, []byte(finalCommand), 0644)
 
 	// 20. 等待流结束（如果命令先完整，流仍在后台接收 explanation）
-	if !streamDoneReceived {
+	// 若上面 select 已读取过 streamDone，则 streamErr 非 nil，跳过等待
+	if streamErr == nil {
 		<-streamDone
 	}
 
