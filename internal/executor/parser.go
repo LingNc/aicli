@@ -57,9 +57,9 @@ func NewParser() *Parser {
 	return &Parser{state: StatePrefix}
 }
 
-// CommandDone 命令是否已完整解析（状态已过 StateCommand，分类已确定）
+// CommandDone 命令是否已完整解析（状态已过 StateMetadata，分类已确定）
 func (p *Parser) CommandDone() bool {
-	return p.state > StateCommand
+	return p.state > StateMetadata && p.CurrentCategory != ""
 }
 
 // Feed 输入一个 chunk，返回本次新增的命令文本（用于流式输出）

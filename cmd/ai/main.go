@@ -138,12 +138,18 @@ func main() {
 	cmdCh := make(chan cmdReady, 1)
 	streamDone := make(chan error, 1)
 
+	cmdPrefixShown := false
 	go func() {
 		_, err := client.StreamChat(userInput, func(chunk string) {
 			newCmd := parser.Feed(chunk)
 			if newCmd != "" {
 				newCmd = strings.ReplaceAll(newCmd, "\r", "")
-				fmt.Print(newCmd)
+				if !cmdPrefixShown {
+					fmt.Print("$ " + newCmd)
+					cmdPrefixShown = true
+				} else {
+					fmt.Print(newCmd)
+				}
 			}
 			// 在 callback 内部检查命令是否完成
 			// 如果刚完成，通过 channel 通知主 goroutine（避免主 goroutine 直接读取 parser 字段造成竞争）
