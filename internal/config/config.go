@@ -215,7 +215,11 @@ func Setup(originalArgs []string) error {
 
 EDITOR:
 	for {
-		if err := exec.Command(editor, configPath).Run(); err != nil {
+		cmd := exec.Command(editor, configPath)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("打开编辑器失败: %w", err)
 		}
 
