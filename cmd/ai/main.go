@@ -10,16 +10,21 @@ import (
 	"github.com/lingnc/aicli/internal/config"
 	"github.com/lingnc/aicli/internal/executor"
 	"github.com/lingnc/aicli/internal/llm"
+	"github.com/lingnc/aicli/internal/shell"
 )
 
 // parseArgs 解析命令行参数
-// 返回: debug标志, 子命令, 用户输入
-func parseArgs(args []string) (debug bool, subcommand string, userInput string) {
-	for _, arg := range args {
+// 返回: debug标志, 子命令, 子命令动作, 用户输入
+func parseArgs(args []string) (debug bool, subcommand string, subAction string, userInput string) {
+	for i, arg := range args {
 		if arg == "-d" || arg == "--debug" {
 			debug = true
 		} else if arg == "setup" {
 			subcommand = "setup"
+		} else if arg == "shell" && i+1 < len(args) {
+			subcommand = "shell"
+			subAction = args[i+1]
+			break
 		} else {
 			if userInput != "" {
 				userInput += " "
@@ -39,11 +44,31 @@ func debugLog(debug bool, format string, args ...interface{}) {
 
 func main() {
 	// 1. 解析参数
-	debug, subcommand, userInput := parseArgs(os.Args[1:])
+	debug, subcommand, subAction, userInput := parseArgs(os.Args[1:])
 
 	// 2. 处理 setup 子命令
 	if subcommand == "setup" {
 		config.Setup(os.Args[1:])
+		os.Exit(0)
+	}
+
+	// 2.5 处理 shell 子命令
+	if subcommand == "shell" {
+		switch subAction {
+		case "install":
+			if err := shell.Install(); err != nil {
+				fmt.Fprintf(os.Stderr, "安装失败: %v\n", err)
+				os.Exit(1)
+			}
+		case "uninstall":
+			if err := shell.Uninstall(); err != nil {
+				fmt.Fprintf(os.Stderr, "卸载失败: %v\n", err)
+				os.Exit(1)
+			}
+		default:
+			fmt.Fprintln(os.Stderr, "用法: ai shell install | uninstall")
+			os.Exit(1)
+		}
 		os.Exit(0)
 	}
 

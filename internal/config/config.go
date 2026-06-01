@@ -153,6 +153,30 @@ func Validate(cfg *Config) error {
 	return nil
 }
 
+// promptRetry 处理验证失败后的重试选择
+// 返回: "retry"=重新编辑, "cancel"=放弃, "force"=强制保存
+func promptRetry(err error, configPath string, backup []byte) string {
+	for {
+		fmt.Printf("错误: %v\n", err)
+		fmt.Println("[e]重新编辑 / [x]放弃 / [f]强制保存")
+		var choice string
+		fmt.Scanln(&choice)
+		switch choice {
+		case "e":
+			return "retry"
+		case "x":
+			if len(backup) > 0 {
+				os.WriteFile(configPath, backup, 0600)
+			}
+			return "cancel"
+		case "f":
+			return "force"
+		default:
+			fmt.Println("请输入 e、x 或 f")
+		}
+	}
+}
+
 // Setup 交互式配置引导
 func Setup(originalArgs []string) error {
 	dir, err := Dir()
@@ -188,6 +212,7 @@ func Setup(originalArgs []string) error {
 		editor = v
 	}
 
+EDITOR:
 	for {
 		if err := exec.Command(editor, configPath).Run(); err != nil {
 			return fmt.Errorf("打开编辑器失败: %w", err)
@@ -195,37 +220,25 @@ func Setup(originalArgs []string) error {
 
 		cfg, err := Load()
 		if err != nil {
-			fmt.Printf("错误: %v\n", err)
-			fmt.Println("[e]重新编辑 / [x]放弃 / [f]强制保存")
-			var choice string
-			fmt.Scanln(&choice)
-			switch choice {
-			case "e":
-				continue
-			case "x":
-				if len(backup) > 0 {
-					os.WriteFile(configPath, backup, 0600)
-				}
+			result := promptRetry(err, configPath, backup)
+			switch result {
+			case "retry":
+				goto EDITOR
+			case "cancel":
 				return fmt.Errorf("放弃配置")
-			case "f":
+			case "force":
 				return nil
 			}
 		}
 
 		if err := Validate(cfg); err != nil {
-			fmt.Printf("验证失败: %v\n", err)
-			fmt.Println("[e]重新编辑 / [x]放弃 / [f]强制保存")
-			var choice string
-			fmt.Scanln(&choice)
-			switch choice {
-			case "e":
-				continue
-			case "x":
-				if len(backup) > 0 {
-					os.WriteFile(configPath, backup, 0600)
-				}
+			result := promptRetry(err, configPath, backup)
+			switch result {
+			case "retry":
+				goto EDITOR
+			case "cancel":
 				return fmt.Errorf("放弃配置")
-			case "f":
+			case "force":
 				return nil
 			}
 		}
@@ -249,7 +262,9 @@ func (cfg *Config) AddToWhitelist(baseName string) {
 		}
 	}
 	cfg.Whitelist = append(cfg.Whitelist, baseName)
-	Save(cfg)
+	if err := Save(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 保存白名单失败: %v\n", err)
+	}
 }
 
 // IsWhitelisted 检查命令是否在白名单中

@@ -84,8 +84,8 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 	}
 
 	if c.Debug {
-		fmt.Fprintf(c.debugWriter(), "[DEBUG] 请求 URL: %s\n", url)
-		fmt.Fprintf(c.debugWriter(), "[DEBUG] 请求体: %s\n", string(body))
+		fmt.Fprintf(os.Stderr, "[DEBUG] 请求 URL: %s\n", url)
+		fmt.Fprintf(os.Stderr, "[DEBUG] 请求体: %s\n", string(body))
 	}
 
 	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
@@ -122,7 +122,7 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 		var cr chatResponse
 		if err := json.Unmarshal([]byte(data), &cr); err != nil {
 			if c.Debug {
-				fmt.Fprintf(c.debugWriter(), "[DEBUG] 解析 SSE 失败: %v (data: %s)\n", err, data)
+				fmt.Fprintf(os.Stderr, "[DEBUG] 解析 SSE 失败: %v (data: %s)\n", err, data)
 			}
 			continue
 		}
@@ -144,16 +144,9 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 	}
 
 	if c.Debug {
-		fmt.Fprintf(c.debugWriter(), "[DEBUG] 完整响应: %s\n", result.FullContent)
-		fmt.Fprintf(c.debugWriter(), "[DEBUG] 耗时: %v\n", result.Duration)
+		fmt.Fprintf(os.Stderr, "[DEBUG] 完整响应: %s\n", result.FullContent)
+		fmt.Fprintf(os.Stderr, "[DEBUG] 耗时: %v\n", result.Duration)
 	}
 
 	return result, nil
-}
-
-func (c *Client) debugWriter() io.Writer {
-	if c.Debug {
-		return os.Stderr
-	}
-	return io.Discard
 }
