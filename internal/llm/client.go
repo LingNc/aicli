@@ -76,7 +76,21 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 		MaxTokens:   1024,
 	}
 
-	body, err := json.Marshal(reqBody)
+	bodyBytes, _ := json.Marshal(reqBody)
+	var bodyMap map[string]any
+	_ = json.Unmarshal(bodyBytes, &bodyMap)
+
+	// 应用 thinking_mode
+	if c.cfg.ThinkingMode == "enabled" {
+		bodyMap["thinking"] = map[string]any{"type": "enabled"}
+	}
+
+	// 合并 extra_body
+	for k, v := range c.cfg.ExtraBody {
+		bodyMap[k] = v
+	}
+
+	body, err := json.Marshal(bodyMap)
 	if err != nil {
 		return nil, fmt.Errorf("序列化请求失败: %w", err)
 	}

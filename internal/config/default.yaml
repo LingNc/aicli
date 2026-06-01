@@ -27,3 +27,9 @@ dangerous_patterns:
   - "dd if="
   - "chmod -R"
   - "chown -R"
+
+# ──── thinking 模式（disabled | enabled）────
+thinking_mode: "disabled"
+
+# ──── 额外请求体参数（直接合并到 API 请求 JSON）────
+extra_body: {}

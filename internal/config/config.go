@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"slices"
 	_ "embed"
 	"fmt"
@@ -20,16 +21,18 @@ var defaultYAML []byte
 
 // Config 是应用配置结构体
 type Config struct {
-	APIKey            string   `yaml:"api_key"`
-	BaseURL           string   `yaml:"base_url"`
-	Model             string   `yaml:"model"`
-	Mode              string   `yaml:"mode"`
-	Debug             bool     `yaml:"debug"`
-	DebugLogConsole   bool     `yaml:"debug_log_console"`
-	DebugLogDir       string   `yaml:"debug_log_dir"`
-	Whitelist         []string `yaml:"whitelist"`
-	ForbiddenPatterns []string `yaml:"forbidden_patterns"` // 用户扩展的禁止命令
-	DangerousPatterns []string `yaml:"dangerous_patterns"` // 用户扩展的需确认命令
+	APIKey            string         `yaml:"api_key"`
+	BaseURL           string         `yaml:"base_url"`
+	Model             string         `yaml:"model"`
+	Mode              string         `yaml:"mode"`
+	Debug             bool           `yaml:"debug"`
+	DebugLogConsole   bool           `yaml:"debug_log_console"`
+	DebugLogDir       string         `yaml:"debug_log_dir"`
+	Whitelist         []string       `yaml:"whitelist"`
+	ForbiddenPatterns []string       `yaml:"forbidden_patterns"` // 用户扩展的禁止命令
+	DangerousPatterns []string       `yaml:"dangerous_patterns"` // 用户扩展的需确认命令
+	ThinkingMode      string         `yaml:"thinking_mode"`
+	ExtraBody         map[string]any `yaml:"extra_body"`
 }
 
 // Dir 返回配置目录路径 (~/.aicli)
@@ -94,16 +97,20 @@ func loadDefault() (*Config, error) {
 	return cfg, nil
 }
 
-// fillDefaults 用默认值填充空字段
+// fillDefaults 用默认值填充空字段（基于反射，自动从 default.yaml 补全零值）
 func fillDefaults(cfg *Config) {
-	if cfg.BaseURL == "" {
-		cfg.BaseURL = "https://api.openai.com"
-	}
-	if cfg.Model == "" {
-		cfg.Model = "gpt-4o"
-	}
-	if cfg.Mode == "" {
-		cfg.Mode = "ai"
+	var defaults Config
+	yaml.Unmarshal(defaultYAML, &defaults)
+
+	cfgV := reflect.ValueOf(cfg).Elem()
+	defV := reflect.ValueOf(&defaults).Elem()
+	t := cfgV.Type()
+
+	for i := 0; i < t.NumField(); i++ {
+		field := cfgV.Field(i)
+		if field.IsZero() {
+			field.Set(defV.Field(i))
+		}
 	}
 }
 
