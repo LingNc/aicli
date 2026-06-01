@@ -244,7 +244,7 @@ EDITOR:
 			}
 		}
 
-		fmt.Println("✓ 配置已保存")
+		fmt.Println("-> 配置已保存")
 		break
 	}
 

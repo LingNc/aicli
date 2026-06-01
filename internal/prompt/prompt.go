@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 )
 
 // System 是发给 LLM 的系统 prompt 模板
@@ -75,9 +74,6 @@ func BuildSystemInfo() string {
 	if hostname, err := os.Hostname(); err == nil {
 		info.WriteString(fmt.Sprintf("\n主机: %s", hostname))
 	}
-
-	// 当前时间
-	info.WriteString(fmt.Sprintf("\n时间: %s", time.Now().Format("2006-01-02 15:04:05")))
 
 	return info.String()
 }

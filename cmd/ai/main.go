@@ -20,6 +20,9 @@ func parseArgs(args []string) (debug bool, subcommand string, subAction string, 
 	for i, arg := range args {
 		if arg == "-d" || arg == "--debug" {
 			debug = true
+		} else if arg == "-h" || arg == "--help" {
+			showHelp()
+			os.Exit(0)
 		} else if arg == "setup" {
 			subcommand = "setup"
 		} else if arg == "shell" && i+1 < len(args) {
@@ -34,6 +37,19 @@ func parseArgs(args []string) (debug bool, subcommand string, subAction string, 
 		}
 	}
 	return
+}
+
+// showHelp 显示帮助信息
+func showHelp() {
+	fmt.Println(`用法: ai [-d] <查询>
+      ai setup          配置 API 密钥和模型
+      ai shell install  安装 shell 集成
+      ai shell uninstall 卸载 shell 集成
+
+示例:
+  ai 查看内存
+  ai 列出占用端口8085的程序
+  ai 删除所有.tmp文件`)
 }
 
 // debugLog 打印调试日志
@@ -73,6 +89,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	// 2.8 空参数优先显示 help
+	if userInput == "" {
+		showHelp()
+		os.Exit(0)
+	}
+
 	// 3. 检查配置文件，不存在则自动 Setup
 	if !config.Exists() {
 		fmt.Fprintln(os.Stderr, "配置文件不存在，正在引导设置...")
@@ -99,12 +121,6 @@ func main() {
 	if err := config.Validate(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "配置验证失败，请运行 ai setup: %v\n", err)
 		os.Exit(4)
-	}
-
-	// 7. 检查用户输入
-	if userInput == "" {
-		fmt.Fprintln(os.Stderr, "用法: ai [-d] <查询>")
-		os.Exit(1)
 	}
 
 	// 8. 创建 LLM 客户端
@@ -193,7 +209,7 @@ AFTER_STREAM:
 		if reason == "" {
 			reason = "命令被安全规则禁止执行"
 		}
-		fmt.Fprintf(os.Stderr, "✗ %s\n", reason)
+		fmt.Fprintf(os.Stderr, "-> %s\n", reason)
 		os.Exit(2)
 
 	case rules.VerdictDangerous:
@@ -203,13 +219,13 @@ AFTER_STREAM:
 			os.Exit(1)
 		}
 		if !approved {
-			fmt.Fprintln(os.Stderr, "✗ 已取消")
+			fmt.Fprintln(os.Stderr, "-> 已取消")
 			os.Exit(2)
 		}
 		if addWhite {
 			baseName := executor.ExtractBaseName(parseResult.Command)
 			cfg.AddToWhitelist(baseName)
-			fmt.Fprintf(os.Stderr, "✓ 已将 %s 加入白名单\n", baseName)
+			fmt.Fprintf(os.Stderr, "-> 已将 %s 加入白名单\n", baseName)
 		}
 
 	case rules.VerdictSafe:

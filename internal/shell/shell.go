@@ -75,7 +75,7 @@ func Install() error {
 
 	// 检查是否已安装
 	if strings.Contains(content, installMarker) {
-		fmt.Printf("✓ 已安装到 %s\n", rcPath)
+		fmt.Printf("-> 已安装到 %s\n", rcPath)
 		return nil
 	}
 
@@ -90,7 +90,7 @@ func Install() error {
 		return fmt.Errorf("写入 wrapper 失败: %w", err)
 	}
 
-	fmt.Printf("✓ 已安装到 %s，请运行 source %s 或重新打开终端\n", rcPath, rcPath)
+	fmt.Printf("-> 已安装到 %s，请运行 source %s 或重新打开终端\n", rcPath, rcPath)
 	return nil
 }
 
@@ -132,6 +132,6 @@ func Uninstall() error {
 		return fmt.Errorf("写入 %s 失败: %w", rcPath, err)
 	}
 
-	fmt.Printf("✓ 已从 %s 移除\n", rcPath)
+	fmt.Printf("-> 已从 %s 移除\n", rcPath)
 	return nil
 }
