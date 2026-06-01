@@ -65,7 +65,10 @@ func main() {
 
 	// 2. 处理 setup 子命令
 	if subcommand == "setup" {
-		config.Setup(os.Args[1:])
+		if err := config.Setup(os.Args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "-> %v\n", err)
+			os.Exit(4)
+		}
 		os.Exit(0)
 	}
 

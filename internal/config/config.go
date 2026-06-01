@@ -180,20 +180,27 @@ func promptRetry(err error, configPath string, backup []byte) string {
 	}
 	defer term.Restore(fd, oldState)
 
-	buf := make([]byte, 1)
-	os.Stdin.Read(buf)
-	fmt.Fprintln(os.Stderr)
+	for {
+		buf := make([]byte, 1)
+		os.Stdin.Read(buf)
 
-	switch buf[0] {
-	case 'x', 'X':
-		if len(backup) > 0 {
-			os.WriteFile(configPath, backup, 0600)
+		switch buf[0] {
+		case 'x', 'X':
+			fmt.Fprintln(os.Stderr)
+			if len(backup) > 0 {
+				os.WriteFile(configPath, backup, 0600)
+			}
+			return "cancel"
+		case 'f', 'F':
+			fmt.Fprintln(os.Stderr)
+			return "force"
+		case 'e', 'E', '\r', '\n': // Enter 键视为重新编辑
+			fmt.Fprintln(os.Stderr)
+			return "retry"
+		default:
+			// 未识别的键，重新提示（不重复打印错误信息）
+			fmt.Fprintf(os.Stderr, "\n请输入 e、x 或 f ")
 		}
-		return "cancel"
-	case 'f', 'F':
-		return "force"
-	default:
-		return "retry"
 	}
 }
 
