@@ -60,21 +60,21 @@ func (p *Parser) Feed(chunk string) string {
 	for len(p.buf) > 0 {
 		switch p.state {
 		case StateCommand:
-			// 寻找 \n#@  分隔符
-			idx := strings.Index(p.buf, "\n#@ ")
+			// 寻找 \n#$  分隔符
+			idx := strings.Index(p.buf, "\n#$ ")
 			if idx >= 0 {
 				// 输出分隔符之前的命令部分
 				newCmd.WriteString(p.buf[:idx])
 				p.command.WriteString(p.buf[:idx])
-				p.buf = p.buf[idx+4:] // 跳过 "\n#@ "
+				p.buf = p.buf[idx+4:] // 跳过 "\n#$ "
 				p.state = StateMetadata
 				continue
 			}
 			// 没找到分隔符，但检查尾部是否可能是分隔符的前缀
-			// 最长可能前缀: "\n#@ " = 4 字符，检查尾部最多 3 个字符
+			// 最长可能前缀: "\n#$ " = 4 字符，检查尾部最多 3 个字符
 			safe := len(p.buf)
 			for k := 1; k <= 3 && k <= len(p.buf); k++ {
-				suffix := "\n#@ "[:k]
+				suffix := "\n#$ "[:k]
 				if strings.HasSuffix(p.buf, suffix) {
 					safe = len(p.buf) - k
 					break
