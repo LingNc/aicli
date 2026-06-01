@@ -21,11 +21,11 @@ func IsDebug() bool {
 // Debug 输出调试日志（仅 debug 模式）
 func Debug(format string, args ...interface{}) {
 	if debug {
-		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
+		fmt.Fprintf(os.Stderr, "\r[DEBUG] "+format+"\n", args...)
 	}
 }
 
 // Info 输出普通日志到 stderr
 func Info(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	fmt.Fprintf(os.Stderr, "\r"+format+"\n", args...)
 }

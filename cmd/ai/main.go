@@ -139,17 +139,25 @@ func main() {
 	streamDone := make(chan error, 1)
 
 	cmdPrefixShown := false
+	cmdNewlinePrinted := false
 	go func() {
 		_, err := client.StreamChat(userInput, func(chunk string) {
 			newCmd := parser.Feed(chunk)
 			if newCmd != "" {
 				newCmd = strings.ReplaceAll(newCmd, "\r", "")
-				if !cmdPrefixShown {
-					fmt.Print("$ " + newCmd)
-					cmdPrefixShown = true
-				} else {
-					fmt.Print(newCmd)
+				if newCmd != "" {
+					if !cmdPrefixShown {
+						fmt.Print("$ " + newCmd)
+						cmdPrefixShown = true
+					} else {
+						fmt.Print(newCmd)
+					}
 				}
+			}
+			// 命令完成后输出换行（仅一次），避免主 goroutine 输出的换行与流交错
+			if parser.CommandDone() && !cmdNewlinePrinted {
+				fmt.Println()
+				cmdNewlinePrinted = true
 			}
 			// 在 callback 内部检查命令是否完成
 			// 如果刚完成，通过 channel 通知主 goroutine（避免主 goroutine 直接读取 parser 字段造成竞争）
@@ -192,8 +200,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, "AI 未生成命令")
 		os.Exit(3)
 	}
-
-	fmt.Println()
 
 	// 15. 调试信息
 	elapsed := time.Since(startTime)

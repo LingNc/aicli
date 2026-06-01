@@ -179,7 +179,7 @@ func (p *Parser) Finish() *Result {
 
 	p.Result = &Result{
 		Command:     strings.TrimSpace(p.command.String()),
-		Category:    Category(strings.TrimSpace(p.metadata.String())),
+		Category:    Category(strings.TrimSpace(string(p.CurrentCategory))),
 		Explanation: strings.TrimSpace(p.explain.String()),
 	}
 	return p.Result
