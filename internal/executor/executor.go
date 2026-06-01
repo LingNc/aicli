@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/lingnc/aicli/internal/config"
-	"github.com/lingnc/aicli/internal/log"
 	"golang.org/x/term"
 )
 
@@ -30,15 +29,12 @@ func Confirm(category Category, cfg *config.Config) (bool, bool, error) {
 	fd := int(os.Stdin.Fd())
 
 	// 设置终端为原始模式
-	log.EnterRawMode()
 	oldState, err := term.MakeRaw(fd)
 	if err != nil {
-		log.ExitRawMode()
 		return false, false, err
 	}
 	defer func() {
 		term.Restore(fd, oldState)
-		log.ExitRawMode()
 	}()
 
 	// 信号处理：捕获 SIGINT/SIGTERM，恢复终端后退出
@@ -49,7 +45,6 @@ func Confirm(category Category, cfg *config.Config) (bool, bool, error) {
 		select {
 		case <-sigCh:
 			term.Restore(fd, oldState)
-			log.ExitRawMode()
 			os.Exit(130)
 		case <-done:
 			// 正常返回，goroutine 退出
