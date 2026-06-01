@@ -15,13 +15,12 @@ var defaultYAML []byte
 
 // Config 是应用配置结构体
 type Config struct {
-	APIKey           string   `yaml:"api_key"`
-	BaseURL          string   `yaml:"base_url"`
-	Model            string   `yaml:"model"`
-	Mode             string   `yaml:"mode"`
-	Debug            bool     `yaml:"debug"`
-	Whitelist        []string `yaml:"whitelist"`
-	ReadonlyCommands []string `yaml:"readonly_commands"`
+	APIKey            string   `yaml:"api_key"`
+	BaseURL           string   `yaml:"base_url"`
+	Model             string   `yaml:"model"`
+	Mode              string   `yaml:"mode"`
+	Debug             bool     `yaml:"debug"`
+	Whitelist         []string `yaml:"whitelist"`
 	ForbiddenPatterns []string `yaml:"forbidden_patterns"` // 用户扩展的禁止命令
 	DangerousPatterns []string `yaml:"dangerous_patterns"` // 用户扩展的需确认命令
 }

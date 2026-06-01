@@ -46,52 +46,22 @@ func (r *Rule) Match(command string) bool {
 type Engine struct {
 	forbidden []Rule
 	dangerous []Rule
-	readonly  []string
 	whitelist []string
 }
 
-// hardcodedForbidden 返回硬编码的禁止规则
-func hardcodedForbidden() []Rule {
-	return []Rule{
-		{Pattern: "rm -rf /", MatchType: MatchPrefix},
-		{Pattern: "dd if=/dev/zero of=/dev/", MatchType: MatchContains},
-		{Pattern: "dd if=/dev/urandom of=/dev/", MatchType: MatchContains},
-		{Pattern: ":(){ :|:& };:", MatchType: MatchContains},
-		{Pattern: "mkfs", MatchType: MatchPrefix},
-		{Pattern: "fdisk", MatchType: MatchPrefix},
-		{Pattern: "chmod -R 777 /", MatchType: MatchPrefix},
-		{Pattern: "chown -R /", MatchType: MatchPrefix},
-	}
-}
-
-// hardcodedDangerous 返回硬编码的需确认规则
-func hardcodedDangerous() []Rule {
-	return []Rule{
-		{Pattern: "rm -rf", MatchType: MatchPrefix},
-		{Pattern: "dd if=", MatchType: MatchPrefix},
-		{Pattern: "mkfs", MatchType: MatchPrefix},
-		{Pattern: "fdisk", MatchType: MatchPrefix},
-		{Pattern: "chmod -R", MatchType: MatchPrefix},
-		{Pattern: "chown -R", MatchType: MatchPrefix},
-		{Pattern: ">", MatchType: MatchContains},
-		{Pattern: "| xargs rm", MatchType: MatchContains},
-	}
-}
-
-// NewEngine 创建规则引擎，合并硬编码规则和用户配置
+// NewEngine 创建规则引擎，从配置加载规则
 func NewEngine(cfg *config.Config) *Engine {
 	e := &Engine{
-		forbidden: hardcodedForbidden(),
-		dangerous: hardcodedDangerous(),
-		readonly:  cfg.ReadonlyCommands,
+		forbidden: []Rule{},
+		dangerous: []Rule{},
 		whitelist: cfg.Whitelist,
 	}
 
-	// 追加用户配置的 forbidden 规则（默认 prefix）
+	// 从配置加载 forbidden 规则
 	for _, p := range cfg.ForbiddenPatterns {
 		e.forbidden = append(e.forbidden, Rule{Pattern: p, MatchType: MatchPrefix})
 	}
-	// 追加用户配置的 dangerous 规则（默认 prefix）
+	// 从配置加载 dangerous 规则
 	for _, p := range cfg.DangerousPatterns {
 		e.dangerous = append(e.dangerous, Rule{Pattern: p, MatchType: MatchPrefix})
 	}
@@ -126,11 +96,8 @@ func (e *Engine) Classify(command string, mode string, aiCategory executor.Categ
 		return VerdictSafe
 	}
 
-	// 5. rules 模式: readonly（基础命令名精确匹配）
+	// 5. rules 模式: 非白名单都需要确认
 	if mode == "rules" {
-		if isInList(baseName, e.readonly) {
-			return VerdictSafe
-		}
 		return VerdictDangerous
 	}
 

@@ -54,7 +54,19 @@ func TestHardcodedForbidden(t *testing.T) {
 		{"echo hello", false},
 	}
 
-	e := NewEngine(&config.Config{})
+	cfg := &config.Config{
+		ForbiddenPatterns: []string{
+			"rm -rf /",
+			"dd if=/dev/zero of=/dev/",
+			"dd if=/dev/urandom of=/dev/",
+			":(){ :|:& };:",
+			"mkfs",
+			"fdisk",
+			"chmod -R 777 /",
+			"chown -R /",
+		},
+	}
+	e := NewEngine(cfg)
 	for _, c := range cases {
 		t.Run(c.cmd, func(t *testing.T) {
 			matched := false
@@ -78,18 +90,24 @@ func TestHardcodedDangerous(t *testing.T) {
 	}{
 		{"rm -rf ./tmp", true},
 		{"dd if=/dev/zero of=file.img bs=1M", true},
-		{"mkfs.ext4 /dev/sdb", true},
-		{"fdisk -l /dev/sda", true},
 		{"chmod -R 755 /home/user", true},
 		{"chown -R user:user /home/user", true},
-		{"cat file > output.txt", true},
-		{"find . -name '*.tmp' | xargs rm", true},
-		// not matched
+		// not matched (| xargs rm removed - can't use prefix match for this pattern)
+		{"find . -name '*.tmp' | xargs rm", false},
+		{"cat file > output.txt", false},
 		{"ls -la", false},
 		{"echo hello", false},
 	}
 
-	e := NewEngine(&config.Config{})
+	cfg := &config.Config{
+		DangerousPatterns: []string{
+			"rm -rf",
+			"dd if=",
+			"chmod -R",
+			"chown -R",
+		},
+	}
+	e := NewEngine(cfg)
 	for _, c := range cases {
 		t.Run(c.cmd, func(t *testing.T) {
 			matched := false
@@ -108,7 +126,11 @@ func TestHardcodedDangerous(t *testing.T) {
 
 func TestPriority(t *testing.T) {
 	// rm -rf / should match forbidden (not dangerous)
-	e := NewEngine(&config.Config{})
+	cfg := &config.Config{
+		ForbiddenPatterns: []string{"rm -rf /"},
+		DangerousPatterns: []string{"rm -rf"},
+	}
+	e := NewEngine(cfg)
 	verdict := e.Classify("rm -rf /", "ai", executor.CatUnknown)
 	if verdict != VerdictForbidden {
 		t.Errorf("rm -rf / should be VerdictForbidden, got %v", verdict)
@@ -125,20 +147,26 @@ func TestClassify_PermissiveMode(t *testing.T) {
 
 func TestClassify_RulesMode(t *testing.T) {
 	cfg := &config.Config{
-		ReadonlyCommands: []string{"ls", "cat", "ps"},
+		Whitelist: []string{"ls"},
 	}
 	e := NewEngine(cfg)
 
-	// readonly 命令应返回 Safe
+	// 白名单命令应返回 Safe
 	verdict := e.Classify("ls -la", "rules", executor.CatUnknown)
 	if verdict != VerdictSafe {
-		t.Errorf("ls should be VerdictSafe in rules mode, got %v", verdict)
+		t.Errorf("ls should be VerdictSafe in rules mode (whitelisted), got %v", verdict)
 	}
 
-	// 非 readonly 命令应返回 Dangerous
+	// 非白名单命令应返回 Dangerous
 	verdict = e.Classify("rm -rf ./tmp", "rules", executor.CatUnknown)
 	if verdict != VerdictDangerous {
 		t.Errorf("rm -rf ./tmp should be VerdictDangerous in rules mode, got %v", verdict)
+	}
+
+	// 非白名单的基础命令也应返回 Dangerous
+	verdict = e.Classify("cat file.txt", "rules", executor.CatUnknown)
+	if verdict != VerdictDangerous {
+		t.Errorf("cat should be VerdictDangerous in rules mode (not whitelisted), got %v", verdict)
 	}
 }
 
@@ -215,7 +243,10 @@ func TestUserPatterns(t *testing.T) {
 }
 
 func TestForbiddenReason(t *testing.T) {
-	e := NewEngine(&config.Config{})
+	cfg := &config.Config{
+		ForbiddenPatterns: []string{"rm -rf /"},
+	}
+	e := NewEngine(cfg)
 
 	reason := e.ForbiddenReason("rm -rf /")
 	if reason == "" {
