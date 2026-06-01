@@ -81,11 +81,6 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 	var bodyMap map[string]any
 	_ = json.Unmarshal(bodyBytes, &bodyMap)
 
-	// 应用 thinking_mode
-	if c.cfg.ThinkingMode == "enabled" {
-		bodyMap["thinking"] = map[string]any{"type": "enabled"}
-	}
-
 	// 合并 extra_body
 	for k, v := range c.cfg.ExtraBody {
 		bodyMap[k] = v

@@ -31,7 +31,6 @@ type Config struct {
 	Whitelist         []string       `yaml:"whitelist"`
 	ForbiddenPatterns []string       `yaml:"forbidden_patterns"` // 用户扩展的禁止命令
 	DangerousPatterns []string       `yaml:"dangerous_patterns"` // 用户扩展的需确认命令
-	ThinkingMode      string         `yaml:"thinking_mode"`
 	ExtraBody         map[string]any `yaml:"extra_body"`
 }
 
@@ -143,11 +142,18 @@ func Save(cfg *Config) error {
 
 // SaveDefault 将默认配置写入文件（供 setup 使用）
 func SaveDefault() error {
-	cfg := &Config{}
-	if err := yaml.Unmarshal(defaultYAML, cfg); err != nil {
-		return fmt.Errorf("解析默认配置失败: %w", err)
+	dir, err := Dir()
+	if err != nil {
+		return err
 	}
-	return Save(cfg)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("创建配置目录失败: %w", err)
+	}
+	p, err := Path()
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p, defaultYAML, 0600)
 }
 
 // Validate 全面验证配置
@@ -180,11 +186,6 @@ func Validate(cfg *Config) error {
 		// ok
 	default:
 		errs = append(errs, "mode 必须是 ai/rules/permissive，当前: "+cfg.Mode)
-	}
-
-	// 4b. ThinkingMode 合法
-	if cfg.ThinkingMode != "" && cfg.ThinkingMode != "disabled" && cfg.ThinkingMode != "enabled" {
-		errs = append(errs, fmt.Sprintf("thinking_mode 必须是 disabled/enabled，当前: %s", cfg.ThinkingMode))
 	}
 
 	// 5. 检查白名单有无重复（自动去重即可，但也可提示）

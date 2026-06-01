@@ -28,8 +28,10 @@ dangerous_patterns:
   - "chmod -R"
   - "chown -R"
 
-# ──── thinking 模式（disabled | enabled）────
-thinking_mode: "disabled"
-
 # ──── 额外请求体参数（直接合并到 API 请求 JSON）────
+# 不同提供商关闭/开启思考模式的方式不同，按需配置：
+#   OpenAI 兼容: extra_body: {"thinking": {"type": "disabled"}}
+#   部分模型:    extra_body: {"enable_thinking": false}
+#   部分模型:    extra_body: {"thinking": false}
+# 默认为空，不注入任何额外参数
 extra_body: {}
