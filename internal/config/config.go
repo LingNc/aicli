@@ -157,28 +157,35 @@ func Validate(cfg *Config) error {
 
 // promptRetry 处理验证失败后的重试选择（单键输入，无需回车）
 // 返回: "retry"=重新编辑, "cancel"=放弃, "force"=强制保存
-func promptRetry(err error, configPath string, backup []byte) string {
-	fmt.Fprintf(os.Stderr, "错误: %v\n", err)
-	fmt.Fprintf(os.Stderr, "[e]重新编辑 / [x]放弃 / [f]强制保存 ")
-
+func promptRetry(validationErr error, configPath string, backup []byte) string {
 	fd := int(os.Stdin.Fd())
-	oldState, err := term.MakeRaw(fd)
-	if err != nil {
-		// 非终端环境，fallback 到 Scanln
+	oldState, rawErr := term.MakeRaw(fd) // 改用 rawErr，不再遮蔽 validationErr
+	if rawErr != nil {
+		// 非终端环境 fallback（需要回车确认）
+		fmt.Fprintf(os.Stderr, "错误: %v\n", validationErr)
+		fmt.Fprintf(os.Stderr, "[e]重新编辑 / [x]放弃 / [f]强制保存 ")
 		var choice string
 		fmt.Scanln(&choice)
-		if choice == "x" {
-			if len(backup) > 0 {
-				os.WriteFile(configPath, backup, 0600)
+		if len(choice) > 0 {
+			switch choice[0] {
+			case 'x', 'X':
+				if len(backup) > 0 {
+					os.WriteFile(configPath, backup, 0600)
+				}
+				return "cancel"
+			case 'f', 'F':
+				return "force"
 			}
-			return "cancel"
-		}
-		if choice == "f" {
-			return "force"
 		}
 		return "retry"
 	}
 	defer term.Restore(fd, oldState)
+	// 退出时回到行首清空该行,然后回到上一行清空该行
+	defer fmt.Fprintf(os.Stderr, "\r\033[K\033[1A\r\033[K")
+
+	// raw 模式：\r\033[K 先回到行首并清除行尾，再打印错误，确保旧内容被完全覆盖
+	fmt.Fprintf(os.Stderr, "\r\033[K[e]重新编辑 / [x]放弃 / [f]强制保存 \r\n")
+	fmt.Fprintf(os.Stderr, "-> 错误: %v", validationErr)
 
 	for {
 		buf := make([]byte, 1)
@@ -186,20 +193,19 @@ func promptRetry(err error, configPath string, backup []byte) string {
 
 		switch buf[0] {
 		case 'x', 'X':
-			fmt.Fprintln(os.Stderr)
+			fmt.Fprintf(os.Stderr, "")
 			if len(backup) > 0 {
 				os.WriteFile(configPath, backup, 0600)
 			}
 			return "cancel"
 		case 'f', 'F':
-			fmt.Fprintln(os.Stderr)
+			fmt.Fprintf(os.Stderr, "")
 			return "force"
-		case 'e', 'E', '\r', '\n': // Enter 键视为重新编辑
-			fmt.Fprintln(os.Stderr)
+		case 'e', 'E', '\r', '\n':
+			fmt.Fprintf(os.Stderr, "")
 			return "retry"
 		default:
-			// 未识别的键，重新提示（不重复打印错误信息）
-			fmt.Fprintf(os.Stderr, "\n请输入 e、x 或 f ")
+			fmt.Fprintf(os.Stderr, "\a") // 只响铃，不输出任何字符
 		}
 	}
 }
