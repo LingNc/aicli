@@ -43,14 +43,22 @@ func Confirm(category Category, cfg *config.Config) (bool, bool, error) {
 
 	// 信号处理：捕获 SIGINT/SIGTERM，恢复终端后退出
 	sigCh := make(chan os.Signal, 1)
+	done := make(chan struct{})
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		<-sigCh
-		term.Restore(fd, oldState)
-		log.ExitRawMode()
-		os.Exit(130)
+		select {
+		case <-sigCh:
+			term.Restore(fd, oldState)
+			log.ExitRawMode()
+			os.Exit(130)
+		case <-done:
+			// 正常返回，goroutine 退出
+		}
 	}()
-	defer signal.Stop(sigCh)
+	defer func() {
+		close(done)
+		signal.Stop(sigCh)
+	}()
 
 	// 读取用户输入
 	buf := make([]byte, 1)
