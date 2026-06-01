@@ -137,7 +137,7 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 		Duration:    time.Since(start),
 	}
 
-	log.Debug("\n完整响应: %q", result.FullContent)
+	log.Debug("完整响应: %q", result.FullContent)
 	log.Debug("耗时: %v", result.Duration)
 
 	return result, nil

@@ -26,9 +26,10 @@ type Result struct {
 type ParseState int
 
 const (
-	StatePrefix      ParseState = iota // 等待 #$ 前缀（3 字节），跳过不输出
+	StatePrefix       ParseState = iota // 等待 #$ 前缀（3 字节），跳过不输出
 	StateCommand                        // 累积命令（从 #$ 之后到 \n#@ 之前），流式输出
 	StateMetadata                       // 读取分类行
+	StateExplainPrefix                  // 等待并跳过 #& 前缀
 	StateExplanation                    // 读取说明
 	StateDone                           // 解析完成
 )
@@ -38,6 +39,8 @@ const (
 	prefixMarkerLen = 3
 	metaMarker      = "\n#@ " // 元数据分隔符（4 字节）
 	metaMarkerLen   = 4
+	explainMarker    = "#& " // 说明前缀（3 字节）
+	explainMarkerLen = 3
 )
 
 // Parser 是流式状态机解析器
@@ -127,13 +130,28 @@ func (p *Parser) Feed(chunk string) string {
 				p.metadata.WriteString(p.buf[:idx])
 				p.CurrentCategory = Category(strings.TrimSpace(p.metadata.String()))
 				p.buf = p.buf[idx+1:]
-				p.state = StateExplanation
+				p.state = StateExplainPrefix
 				continue
 			}
 			// 没有换行，继续累积
 			p.metadata.WriteString(p.buf)
 			p.buf = ""
 			return newCmd.String()
+
+		case StateExplainPrefix:
+			if len(p.buf) < explainMarkerLen {
+				return newCmd.String() // 等待更多数据
+			}
+			if p.buf[:explainMarkerLen] == explainMarker {
+				p.buf = p.buf[explainMarkerLen:]
+				p.state = StateExplanation
+				continue
+			}
+			// 不匹配：把已有内容当说明，直接进入 StateExplanation
+			p.explain.WriteString(p.buf)
+			p.buf = ""
+			p.state = StateExplanation
+			continue
 
 		case StateExplanation:
 			// 读取说明到末尾
@@ -173,6 +191,11 @@ func (p *Parser) Finish() *Result {
 		if p.buf != "" {
 			p.metadata.WriteString(p.buf)
 			p.CurrentCategory = Category(strings.TrimSpace(p.metadata.String()))
+			p.buf = ""
+		}
+	case StateExplainPrefix:
+		if p.buf != "" {
+			p.explain.WriteString(p.buf)
 			p.buf = ""
 		}
 	}
