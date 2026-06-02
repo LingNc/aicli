@@ -187,6 +187,7 @@ func migrateConfigFile(configPath string, userData []byte) error {
 	// 3. 以 defaultYAML 为模板，逐行替换用户已有值
 	lines := strings.Split(string(defaultYAML), "\n")
 	replaced := make(map[string]bool)
+	templateKeys := make(map[string]bool) // 记录模板中所有顶层 key
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || trimmed[0] == '#' {
@@ -201,6 +202,7 @@ func migrateConfigFile(configPath string, userData []byte) error {
 			continue
 		}
 		key := strings.TrimSpace(trimmed[:idx])
+		templateKeys[key] = true
 
 		// 跳过 config_version、request_body 和复杂字段（slice、嵌套 map）
 		if key == "config_version" || key == "request_body" {
@@ -236,7 +238,7 @@ func migrateConfigFile(configPath string, userData []byte) error {
 	}
 	var blocks []extraBlock
 	for k, v := range userMap {
-		if replaced[k] || k == "config_version" || k == "request_body" {
+		if replaced[k] || templateKeys[k] {
 			continue
 		}
 		if _, isMap := v.(map[string]any); isMap {
@@ -413,6 +415,13 @@ func Validate(cfg *Config) error {
 	return nil
 }
 
+// formatError 将错误信息压缩为单行（多行换行替换为空格，并压缩连续空白）
+func formatError(err error) string {
+	s := strings.ReplaceAll(err.Error(), "\n", " ")
+	s = strings.ReplaceAll(s, "\r", "")
+	return strings.Join(strings.Fields(s), " ")
+}
+
 // promptRetry 处理验证失败后的重试选择（单键输入，无需回车）
 // 返回: "retry"=重新编辑, "cancel"=放弃, "force"=强制保存
 func promptRetry(validationErr error, configPath string, backup []byte) string {
@@ -420,7 +429,7 @@ func promptRetry(validationErr error, configPath string, backup []byte) string {
 	oldState, rawErr := term.MakeRaw(fd) // 改用 rawErr，不再遮蔽 validationErr
 	if rawErr != nil {
 		// 非终端环境 fallback（需要回车确认）
-		fmt.Fprintf(os.Stderr, "错误: %v\n", validationErr)
+		fmt.Fprintf(os.Stderr, "错误: %s\n", formatError(validationErr))
 		fmt.Fprintf(os.Stderr, "[e]重新编辑 / [x]放弃 / [f]强制保存 ")
 		var choice string
 		fmt.Scanln(&choice)
@@ -443,7 +452,7 @@ func promptRetry(validationErr error, configPath string, backup []byte) string {
 
 	// raw 模式：\r\033[K 先回到行首并清除行尾，再打印错误，确保旧内容被完全覆盖
 	fmt.Fprintf(os.Stderr, "\r\033[K[e]重新编辑 / [x]放弃 / [f]强制保存 \r\n")
-	fmt.Fprintf(os.Stderr, "-> 错误: %v", validationErr)
+	fmt.Fprintf(os.Stderr, "-> 错误: %s", formatError(validationErr))
 
 	for {
 		buf := make([]byte, 1)
