@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -14,12 +15,16 @@ import (
 	"github.com/lingnc/aicli/internal/shell"
 )
 
+var version = "v0.1.0"
+
 // parseArgs 解析命令行参数
-// 返回: debug标志, 子命令, 子命令动作, 用户输入
-func parseArgs(args []string) (debug bool, subcommand string, subAction string, userInput string) {
+// 返回: debug标志, 显示版本, 子命令, 子命令动作, 用户输入
+func parseArgs(args []string) (debug bool, showVersion bool, subcommand string, subAction string, userInput string) {
 	for i, arg := range args {
 		if arg == "-d" || arg == "--debug" {
 			debug = true
+		} else if arg == "-v" || arg == "--version" {
+			showVersion = true
 		} else if arg == "-h" || arg == "--help" {
 			showHelp()
 			os.Exit(0)
@@ -41,17 +46,25 @@ func parseArgs(args []string) (debug bool, subcommand string, subAction string, 
 
 // showHelp 显示帮助信息
 func showHelp() {
-	log.Print(`用法: ai [-d] <查询>
+	w := os.Stderr
+	printOption := func(flagText string, desc string) {
+		fmt.Fprintf(w, "  %-16s %s\n", flagText, desc)
+	}
 
-子命令:
-  ai setup             配置 API 密钥和模型
-  ai shell install     安装 shell 集成
-  ai shell uninstall   卸载 shell 集成
-
-示例:
-  ai 查看内存
-  ai 列出占用端口8085的程序
-  ai 删除所有.tmp文件`)
+	fmt.Fprintf(w, "ai %s\n", version)
+	fmt.Fprintf(w, "用法: ai [-d] [-v] <查询>\n\n")
+	fmt.Fprintf(w, "子命令:\n")
+	printOption("setup", "配置 API 密钥和模型")
+	printOption("shell install", "安装 shell 集成")
+	printOption("shell uninstall", "卸载 shell 集成")
+	fmt.Fprintf(w, "\n选项:\n")
+	printOption("-v, --version", "显示版本号")
+	printOption("-d, --debug", "启用调试日志")
+	printOption("-h, --help", "显示帮助信息")
+	fmt.Fprintf(w, "\n示例:\n")
+	fmt.Fprintf(w, "  ai 查看内存\n")
+	fmt.Fprintf(w, "  ai 列出占用端口8085的程序\n")
+	fmt.Fprintf(w, "  ai 删除所有.tmp文件\n")
 }
 
 func main() {
@@ -65,7 +78,15 @@ func main() {
 
 func run() int {
 	// 1. 解析参数
-	debug, subcommand, subAction, userInput := parseArgs(os.Args[1:])
+	debug, showVersion, subcommand, subAction, userInput := parseArgs(os.Args[1:])
+
+	// 1.5 处理版本号显示
+	if showVersion {
+		fmt.Printf("ai %s\n", version)
+		fmt.Println("Author: LingNc")
+		fmt.Println("Repository: https://github.com/LingNc/aicli")
+		return 0
+	}
 
 	// 2. 处理 setup 子命令
 	if subcommand == "setup" {
