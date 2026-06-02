@@ -3,13 +3,13 @@ package config
 import (
 	_ "embed"
 	"fmt"
-	"maps"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/lingnc/aicli/internal/log"
@@ -86,7 +86,7 @@ func Load() (*Config, error) {
 	}
 
 	// 版本过旧提示，不自动迁移、不打开编辑器
-	if cfg.ConfigVersion > 0 && cfg.ConfigVersion < defaultConfigVersion() {
+	if cfg.ConfigVersion >= 0 && cfg.ConfigVersion < defaultConfigVersion() {
 		log.Warn("配置文件版本过旧(v%d)，请在 'setup' 更新", cfg.ConfigVersion)
 	}
 
@@ -168,9 +168,9 @@ func checkAndMigrateConfig(configPath string, data []byte) ([]byte, error) {
 	return newData, nil
 }
 
-// migrateConfigFile 以 default.yaml 为模板合并用户已有值，结构和注释来自 default.yaml。
-// 在内存中合并，最后一次性写入文件。返回 error 由调用方处理。
-// forbidden_patterns 和 dangerous_patterns 去重合并，其他 slice 保持替换。
+// migrateConfigFile 以 default.yaml 为模板合并用户已有值。
+// 保留模板的注释、结构和顺序，只替换用户已有的简单键值。
+// 复杂字段（slice、嵌套 map）和 request_body 保留模板默认值，用户可在编辑器中手动修改。
 func migrateConfigFile(configPath string, userData []byte) error {
 	// 1. 备份原文件
 	backupPath := configPath + ".bak"
@@ -178,108 +178,118 @@ func migrateConfigFile(configPath string, userData []byte) error {
 		return fmt.Errorf("备份配置文件失败: %w", err)
 	}
 
-	// 2. 在内存中解析 default 模板和用户值
-	var defMap map[string]any
-	if err := yaml.Unmarshal(defaultYAML, &defMap); err != nil {
-		return fmt.Errorf("解析默认配置失败: %w", err)
-	}
-
+	// 2. 解析用户值
 	var userMap map[string]any
 	if err := yaml.Unmarshal(userData, &userMap); err != nil {
 		return fmt.Errorf("解析用户配置失败: %w", err)
 	}
 
-	// 3. 合并
-	sliceMergeKeys := map[string]bool{
-		"forbidden_patterns": true,
-		"dangerous_patterns": true,
-	}
-	for k, userVal := range userMap {
-		if k == "config_version" {
-			continue // 版本号始终用 default 的
-		}
-		if k == "request_body" {
-			continue // 请求体由用户自行管理，不自动补充
-		}
-		defVal, exists := defMap[k]
-		if !exists {
-			// defMap 中没有的 key 保留下来
-			defMap[k] = userVal
+	// 3. 以 defaultYAML 为模板，逐行替换用户已有值
+	lines := strings.Split(string(defaultYAML), "\n")
+	replaced := make(map[string]bool)
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || trimmed[0] == '#' {
 			continue
 		}
-		// 两个都是 map 则深度合并
-		if uMap, ok := userVal.(map[string]any); ok {
-			if dMap, ok := defVal.(map[string]any); ok {
-				defMap[k] = deepMergeMap(dMap, uMap)
-				continue
-			}
+		// 只处理顶层 key
+		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
+			continue // 跳过非顶层行
 		}
-		// 去重合并 slice
-		if sliceMergeKeys[k] {
-			if uSlice, ok := userVal.([]any); ok {
-				if dSlice, ok := defVal.([]any); ok {
-					defMap[k] = mergeSliceDedup(dSlice, uSlice)
-					continue
-				}
-			}
+		idx := strings.Index(trimmed, ":")
+		if idx < 0 {
+			continue
 		}
-		defMap[k] = userVal
+		key := strings.TrimSpace(trimmed[:idx])
+
+		// 跳过 config_version、request_body 和复杂字段（slice、嵌套 map）
+		if key == "config_version" || key == "request_body" {
+			continue
+		}
+		userVal, exists := userMap[key]
+		if !exists {
+			continue
+		}
+		if _, isSlice := userVal.([]any); isSlice {
+			continue // slice 保留模板默认值
+		}
+		if _, isMap := userVal.(map[string]any); isMap {
+			continue // 嵌套 map 保留模板默认值
+		}
+
+		// 替换值（保留缩进和 key）
+		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		// 保留行内注释
+		comment := ""
+		commentIdx := strings.Index(trimmed, " #")
+		if commentIdx > idx {
+			comment = trimmed[commentIdx:]
+		}
+		lines[i] = indent + key + ": " + formatYAMLScalar(userVal) + comment
+		replaced[key] = true
 	}
 
-	// 4. 写入文件
-	merged, err := yaml.Marshal(defMap)
-	if err != nil {
-		return fmt.Errorf("序列化合并配置失败: %w", err)
+	// 4. 追加用户有但模板没有的 key（按块排序：scalar 为单独块，slice 为 key+items 整体）
+	type extraBlock struct {
+		sortKey string   // 用于排序的 key
+		lines   []string // 该块的所有行
 	}
-	if err := os.WriteFile(configPath, merged, 0600); err != nil {
-		return fmt.Errorf("写入配置文件失败: %w", err)
+	var blocks []extraBlock
+	for k, v := range userMap {
+		if replaced[k] || k == "config_version" || k == "request_body" {
+			continue
+		}
+		if _, isMap := v.(map[string]any); isMap {
+			continue // 嵌套 map 过于复杂，跳过
+		}
+		if s, isSlice := v.([]any); isSlice {
+			lines := []string{k + ":"}
+			for _, item := range s {
+				lines = append(lines, "  - "+formatYAMLScalar(item))
+			}
+			blocks = append(blocks, extraBlock{sortKey: k, lines: lines})
+			continue
+		}
+		blocks = append(blocks, extraBlock{sortKey: k, lines: []string{k + ": " + formatYAMLScalar(v)}})
 	}
-	return nil
+
+	if len(blocks) > 0 {
+		sort.Slice(blocks, func(i, j int) bool {
+			return blocks[i].sortKey < blocks[j].sortKey
+		})
+		result := strings.Join(lines, "\n")
+		result += "\n\n# ──── 用户自定义字段 ────\n"
+		for _, b := range blocks {
+			result += strings.Join(b.lines, "\n") + "\n"
+		}
+		return os.WriteFile(configPath, []byte(result), 0600)
+	}
+
+	return os.WriteFile(configPath, []byte(strings.Join(lines, "\n")), 0600)
 }
 
-// mergeSliceDedup 合并两个 []any 字符串 slice 并去重
-// 当前仅用于 string 元素的 slice，非 string 元素不做去重（直接追加）。
-func mergeSliceDedup(base, extra []any) []any {
-	seen := make(map[string]bool, len(base)+len(extra))
-	result := make([]any, 0, len(base)+len(extra))
-	for _, v := range base {
-		if s, ok := v.(string); ok {
-			if seen[s] {
-				continue
-			}
-			seen[s] = true
+// formatYAMLScalar 将 Go 值格式化为 YAML 标量
+func formatYAMLScalar(v any) string {
+	switch val := v.(type) {
+	case string:
+		if val == "" || strings.ContainsAny(val, ":@#{}[]&*!|>'\"`,\n") || isYAMLKeyword(val) {
+			b, _ := yaml.Marshal(val)
+			return strings.TrimSpace(string(b))
 		}
-		result = append(result, v)
+		return val
+	default:
+		b, _ := yaml.Marshal(val)
+		return strings.TrimSpace(string(b))
 	}
-	for _, v := range extra {
-		if s, ok := v.(string); ok {
-			if seen[s] {
-				continue
-			}
-			seen[s] = true
-		}
-		result = append(result, v)
-	}
-	return result
 }
 
-// deepMergeMap 深度合并：base 的结构保留，user 的值覆盖
-// 参数顺序：base 是默认值骨架，user 是用户值覆盖。
-func deepMergeMap(base, user map[string]any) map[string]any {
-	result := make(map[string]any, len(base))
-	maps.Copy(result, base)
-	for k, userVal := range user {
-		if baseVal, exists := result[k]; exists {
-			if baseMap, ok := baseVal.(map[string]any); ok {
-				if userMap, ok := userVal.(map[string]any); ok {
-					result[k] = deepMergeMap(baseMap, userMap)
-					continue
-				}
-			}
-		}
-		result[k] = userVal
+// isYAMLKeyword 检查字符串是否为 YAML 关键字（yaml.v3 会将这些值解析为 bool/null/float 而非 string）
+func isYAMLKeyword(s string) bool {
+	switch strings.ToLower(s) {
+	case "true", "false", "yes", "no", "on", "off", "null", "~", ".inf", "-.inf", ".nan", "-.nan":
+		return true
 	}
-	return result
+	return false
 }
 
 // loadDefault 从嵌入的默认配置加载
@@ -505,7 +515,7 @@ EDITOR:
 			case "cancel":
 				return fmt.Errorf("放弃配置")
 			case "force":
-				return nil
+				return fmt.Errorf("已保存但配置无效: %v", err)
 			}
 		}
 
@@ -517,7 +527,7 @@ EDITOR:
 			case "cancel":
 				return fmt.Errorf("放弃配置")
 			case "force":
-				return nil
+				return fmt.Errorf("已保存但配置无效: %v", err)
 			}
 		}
 
