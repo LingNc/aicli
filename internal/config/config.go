@@ -119,10 +119,12 @@ func promptConfigUpdate(configPath string, userVer, defVer int) bool {
 func updateConfigFile(configPath string, userData []byte) error {
 	// 1. 备份原文件
 	backupPath := configPath + ".bak"
-	if data, err := os.ReadFile(configPath); err == nil {
-		if err := os.WriteFile(backupPath, data, 0600); err != nil {
-			return fmt.Errorf("备份配置文件失败: %w", err)
-		}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("读取配置文件失败: %w", err)
+	}
+	if err := os.WriteFile(backupPath, data, 0600); err != nil {
+		return fmt.Errorf("备份配置文件失败: %w", err)
 	}
 
 	// 2. 在内存中解析 default 模板和用户值
@@ -144,6 +146,9 @@ func updateConfigFile(configPath string, userData []byte) error {
 	for k, userVal := range userMap {
 		if k == "config_version" {
 			continue // 版本号始终用 default 的
+		}
+		if k == "request_body" {
+			continue // 请求体由用户自行管理，不自动补充
 		}
 		defVal, exists := defMap[k]
 		if !exists {
@@ -430,7 +435,7 @@ func Setup(originalArgs []string) error {
 		if err := yaml.Unmarshal(data, &userCfg); err == nil {
 			var defCfg Config
 			yaml.Unmarshal(defaultYAML, &defCfg)
-			if userCfg.ConfigVersion != defCfg.ConfigVersion {
+			if userCfg.ConfigVersion < defCfg.ConfigVersion {
 				if promptConfigUpdate(configPath, userCfg.ConfigVersion, defCfg.ConfigVersion) {
 					if err := updateConfigFile(configPath, data); err != nil {
 						log.Warn("更新配置文件失败: %v", err)
