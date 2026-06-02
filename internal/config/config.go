@@ -3,6 +3,7 @@ package config
 import (
 	_ "embed"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"os/exec"
@@ -21,6 +22,7 @@ var defaultYAML []byte
 
 // Config 是应用配置结构体
 type Config struct {
+	ConfigVersion     int            `yaml:"config_version"`
 	APIKey            string         `yaml:"api_key"`
 	BaseURL           string         `yaml:"base_url"`
 	Model             string         `yaml:"model"`
@@ -87,38 +89,139 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// mergeDefaults 将 default.yaml 中的缺失顶层 key 合并到用户配置（跳过 request_body）。
-// 返回合并后的 YAML 字节和是否有变更。
-func mergeDefaults(userData []byte) ([]byte, bool) {
-	var userMap map[string]any
-	if err := yaml.Unmarshal(userData, &userMap); err != nil {
-		return userData, false
+// promptConfigUpdate 配置版本不匹配时提示用户是否更新
+func promptConfigUpdate(configPath string, userVer, defVer int) bool {
+	fd := int(os.Stdin.Fd())
+	if !term.IsTerminal(fd) {
+		return false
 	}
+
+	fmt.Fprintf(os.Stderr, "-> 配置文件版本过旧 (v%d -> v%d)，是否更新？[y/N] ", userVer, defVer)
+
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		return false
+	}
+	defer term.Restore(fd, oldState)
+	defer fmt.Fprintf(os.Stderr, "\r\033[K")
+
+	buf := make([]byte, 1)
+	if _, err := os.Stdin.Read(buf); err != nil {
+		return false
+	}
+
+	return buf[0] == 'y' || buf[0] == 'Y'
+}
+
+// updateConfigFile 以 default.yaml 为模板合并用户已有值，结构和注释来自 default.yaml。
+// 在内存中合并，最后一次性写入文件。返回 error 由调用方处理。
+// forbidden_patterns 和 dangerous_patterns 去重合并，其他 slice 保持替换。
+func updateConfigFile(configPath string, userData []byte) error {
+	// 1. 备份原文件
+	backupPath := configPath + ".bak"
+	if data, err := os.ReadFile(configPath); err == nil {
+		if err := os.WriteFile(backupPath, data, 0600); err != nil {
+			return fmt.Errorf("备份配置文件失败: %w", err)
+		}
+	}
+
+	// 2. 在内存中解析 default 模板和用户值
 	var defMap map[string]any
 	if err := yaml.Unmarshal(defaultYAML, &defMap); err != nil {
-		return userData, false
+		return fmt.Errorf("解析默认配置失败: %w", err)
 	}
 
-	changed := false
-	for k, v := range defMap {
-		if k == "request_body" {
-			continue // 请求体由用户自行管理，不自动补充
+	var userMap map[string]any
+	if err := yaml.Unmarshal(userData, &userMap); err != nil {
+		return fmt.Errorf("解析用户配置失败: %w", err)
+	}
+
+	// 3. 合并
+	sliceMergeKeys := map[string]bool{
+		"forbidden_patterns": true,
+		"dangerous_patterns": true,
+	}
+	for k, userVal := range userMap {
+		if k == "config_version" {
+			continue // 版本号始终用 default 的
 		}
-		if _, exists := userMap[k]; !exists {
-			userMap[k] = v
-			changed = true
+		defVal, exists := defMap[k]
+		if !exists {
+			// defMap 中没有的 key 保留下来
+			defMap[k] = userVal
+			continue
 		}
+		// 两个都是 map 则深度合并
+		if uMap, ok := userVal.(map[string]any); ok {
+			if dMap, ok := defVal.(map[string]any); ok {
+				defMap[k] = deepMergeMap(dMap, uMap)
+				continue
+			}
+		}
+		// 去重合并 slice
+		if sliceMergeKeys[k] {
+			if uSlice, ok := userVal.([]any); ok {
+				if dSlice, ok := defVal.([]any); ok {
+					defMap[k] = mergeSliceDedup(dSlice, uSlice)
+					continue
+				}
+			}
+		}
+		defMap[k] = userVal
 	}
 
-	if !changed {
-		return userData, false
-	}
-
-	merged, err := yaml.Marshal(userMap)
+	// 4. 写入文件
+	merged, err := yaml.Marshal(defMap)
 	if err != nil {
-		return userData, false
+		return fmt.Errorf("序列化合并配置失败: %w", err)
 	}
-	return merged, true
+	if err := os.WriteFile(configPath, merged, 0600); err != nil {
+		return fmt.Errorf("写入配置文件失败: %w", err)
+	}
+	return nil
+}
+
+// mergeSliceDedup 合并两个 []any 字符串 slice 并去重
+func mergeSliceDedup(base, extra []any) []any {
+	seen := make(map[string]bool, len(base)+len(extra))
+	result := make([]any, 0, len(base)+len(extra))
+	for _, v := range base {
+		if s, ok := v.(string); ok {
+			if seen[s] {
+				continue
+			}
+			seen[s] = true
+		}
+		result = append(result, v)
+	}
+	for _, v := range extra {
+		if s, ok := v.(string); ok {
+			if seen[s] {
+				continue
+			}
+			seen[s] = true
+		}
+		result = append(result, v)
+	}
+	return result
+}
+
+// deepMergeMap 深度合并：base 的结构保留，user 的值覆盖
+func deepMergeMap(base, user map[string]any) map[string]any {
+	result := make(map[string]any, len(base))
+	maps.Copy(result, base)
+	for k, userVal := range user {
+		if baseVal, exists := result[k]; exists {
+			if baseMap, ok := baseVal.(map[string]any); ok {
+				if userMap, ok := userVal.(map[string]any); ok {
+					result[k] = deepMergeMap(baseMap, userMap)
+					continue
+				}
+			}
+		}
+		result[k] = userVal
+	}
+	return result
 }
 
 // loadDefault 从嵌入的默认配置加载
@@ -321,6 +424,28 @@ func Setup(originalArgs []string) error {
 		backup = data
 	}
 
+	// 检查配置版本，版本不同则提示用户在打开编辑器前更新配置文件
+	if data, err := os.ReadFile(configPath); err == nil {
+		var userCfg Config
+		if err := yaml.Unmarshal(data, &userCfg); err == nil {
+			var defCfg Config
+			yaml.Unmarshal(defaultYAML, &defCfg)
+			if userCfg.ConfigVersion != defCfg.ConfigVersion {
+				if promptConfigUpdate(configPath, userCfg.ConfigVersion, defCfg.ConfigVersion) {
+					if err := updateConfigFile(configPath, data); err != nil {
+						log.Warn("更新配置文件失败: %v", err)
+					} else {
+						// 同步更新备份，以便编辑器加载的就是新内容
+						backup = nil
+						if newData, err := os.ReadFile(configPath); err == nil {
+							backup = newData
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// 选择编辑器
 	editor := "vi"
 	if e := os.Getenv("EDITOR"); e != "" {
@@ -337,13 +462,6 @@ EDITOR:
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("打开编辑器失败: %w", err)
-		}
-
-		// 自动补充缺失字段（跳过 request_body），有变更则回写文件
-		if data, err := os.ReadFile(configPath); err == nil {
-			if merged, changed := mergeDefaults(data); changed {
-				_ = os.WriteFile(configPath, merged, 0600)
-			}
 		}
 
 		cfg, err := Load()
@@ -371,7 +489,12 @@ EDITOR:
 			}
 		}
 
-		log.Print("-> 配置已保存")
+		// 对比备份判断是否实际修改了配置
+		if current, err := os.ReadFile(configPath); err == nil && string(current) == string(backup) {
+			log.Print("-> 配置未修改")
+		} else {
+			log.Print("-> 配置已保存")
+		}
 		break
 	}
 

@@ -1,19 +1,19 @@
 .PHONY: build run test clean install lint
 
 build:
-	go build -ldflags="-s -w" -o ai ./cmd/ai/
+	go build -ldflags="-s -w" -o aicli ./cmd/aicli/
 
 run: build
-	./ai $(ARGS)
+	./aicli $(ARGS)
 
 test:
 	go test -v ./...
 
 clean:
-	rm -f ai
+	rm -f aicli
 
 install: build
-	cp ai /usr/local/bin/ai
+	cp aicli /usr/local/bin/aicli
 
 lint:
 	go vet ./...

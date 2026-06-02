@@ -68,8 +68,11 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 
 	temp := 0.1
 	if v, ok := c.cfg.RequestBody["temperature"]; ok {
-		if f, ok := v.(float64); ok {
-			temp = f
+		switch n := v.(type) {
+		case int:
+			temp = float64(n)
+		case float64:
+			temp = n
 		}
 	}
 	maxTok := 1024
@@ -136,7 +139,7 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 	}
 
 	var fullContent strings.Builder
-	var rawBuf strings.Builder // 累积原始 delta JSON
+	var rawDeltas []json.RawMessage
 	scanner := bufio.NewScanner(resp.Body)
 
 	for scanner.Scan() {
@@ -163,10 +166,7 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 					if choice, ok := choices[0].(map[string]any); ok {
 						if delta, ok := choice["delta"]; ok {
 							if deltaBytes, err := json.Marshal(delta); err == nil {
-								if rawBuf.Len() > 0 {
-									rawBuf.WriteByte(',')
-								}
-								rawBuf.Write(deltaBytes)
+								rawDeltas = append(rawDeltas, deltaBytes)
 							}
 						}
 					}
@@ -194,8 +194,9 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 	log.Debug("耗时: %v", result.Duration)
 
 	// 输出完整原始响应体（包含 reasoning_content、thinking 等所有字段）
-	if log.IsDebug() && rawBuf.Len() > 0 {
-		log.Debug("原始响应体: [%s]", rawBuf.String())
+	if log.IsDebug() && len(rawDeltas) > 0 {
+		rawBytes, _ := json.Marshal(rawDeltas)
+		log.Debug("原始响应体: %s", string(rawBytes))
 	}
 
 	return result, nil
