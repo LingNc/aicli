@@ -3,15 +3,20 @@ package shell
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"os/signal"
 	"os/user"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/lingnc/aicli/internal/log"
+	"golang.org/x/term"
 )
 
 // wrapper 是要注入到 shell rc 文件的 wrapper 函数
 const wrapper = `# >>> ai shell integration >>>
+[[ ":$PATH:" != *":$HOME/.local/bin:"* ]] && export PATH="$HOME/.local/bin:$PATH"
 ai() {
     local tmpfile="/tmp/ai-cmd-$$.txt"
     command aicli "$@"
@@ -127,6 +132,28 @@ func installBinary(dstDir string) error {
 	return nil
 }
 
+// installSystem 使用 sudo 安装二进制到 /usr/local/bin/
+func installSystem() error {
+	src, err := findSelf()
+	if err != nil {
+		return fmt.Errorf("获取当前程序路径失败: %w", err)
+	}
+	dst := "/usr/local/bin/aicli"
+	if src == dst {
+		log.Print("-> 已安装在 %s", dst)
+		return nil
+	}
+	cmd := exec.Command("sudo", "install", "-m", "0755", src, dst)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("系统安装失败: %w", err)
+	}
+	log.Print("-> 已安装到 %s", dst)
+	return nil
+}
+
 // uninstallBinary 从安装目录移除二进制
 func uninstallBinary() {
 	home, err := os.UserHomeDir()
@@ -139,22 +166,128 @@ func uninstallBinary() {
 	}
 }
 
+// selectInstallScope 在 raw mode 下显示箭头选择界面。
+// 返回: "user" (为自己安装) 或 "system" (为所有人安装)
+func selectInstallScope() (string, error) {
+	fd := int(os.Stdin.Fd())
+	if !term.IsTerminal(fd) {
+		return "user", nil
+	}
+
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		return "user", nil
+	}
+
+	// 信号处理：Ctrl-C 时恢复终端
+	done := make(chan struct{})
+	sigCh := make(chan os.Signal, 1)
+	go func() {
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		select {
+		case <-sigCh:
+			term.Restore(fd, oldState)
+			fmt.Fprintf(os.Stderr, "\r\033[K")
+			os.Exit(130)
+		case <-done:
+		}
+	}()
+
+	options := []string{
+		"为所有人安装 (需要 root)",
+		"为自己安装",
+	}
+	selected := 0
+
+	// 首次绘制
+	drawMenu(options, selected)
+
+	buf := make([]byte, 3)
+	for {
+		n, err := os.Stdin.Read(buf)
+		if err != nil || n == 0 {
+			break
+		}
+
+		switch {
+		case buf[0] == '\x1b' && n >= 3 && buf[1] == '[':
+			// 方向键
+			switch buf[2] {
+			case 'A': // 上
+				if selected > 0 {
+					selected--
+					drawMenu(options, selected)
+				}
+			case 'B': // 下
+				if selected < len(options)-1 {
+					selected++
+					drawMenu(options, selected)
+				}
+			}
+		case buf[0] == '\r' || buf[0] == '\n': // Enter
+			// 清空菜单（上移到第一行 + 清除到末尾）
+			fmt.Fprintf(os.Stderr, "\033[%dA\033[J", len(options))
+			signal.Stop(sigCh)
+			close(done)
+			term.Restore(fd, oldState)
+			if selected == 0 {
+				return "system", nil
+			}
+			return "user", nil
+		case buf[0] == 'q' || buf[0] == '\x03': // q 或 Ctrl-C
+			fmt.Fprintf(os.Stderr, "\033[%dA\033[J", len(options))
+			signal.Stop(sigCh)
+			close(done)
+			term.Restore(fd, oldState)
+			return "", fmt.Errorf("用户取消")
+		default:
+			log.Bell()
+		}
+	}
+
+	signal.Stop(sigCh)
+	close(done)
+	term.Restore(fd, oldState)
+	return "user", nil
+}
+
+// drawMenu 绘制选择菜单
+func drawMenu(options []string, selected int) {
+	for i, opt := range options {
+		prefix := "   "
+		if i == selected {
+			prefix = "-> "
+		}
+		fmt.Fprintf(os.Stderr, "\r\033[K%s%s\n", prefix, opt)
+	}
+	// 光标回到第一行
+	fmt.Fprintf(os.Stderr, "\033[%dA", len(options))
+}
+
 // Install 将 wrapper 函数注入到 shell rc 文件并安装二进制
 func Install() error {
-	// 1. 安装二进制到 ~/.local/bin/
-	installDir, err := resolveInstallDir()
+	// 1. 选择安装范围
+	scope, err := selectInstallScope()
 	if err != nil {
 		return err
 	}
-	if err := installBinary(installDir); err != nil {
-		return err
-	}
-	if !checkPath(installDir) {
-		log.Warn("-> %s 不在 PATH 中，请将以下内容加入 shell 配置文件:", installDir)
-		log.Warn("   export PATH=\"$HOME/.local/bin:$PATH\"")
+
+	// 2. 按选择安装二进制
+	if scope == "system" {
+		if err := installSystem(); err != nil {
+			return err
+		}
+	} else {
+		installDir, err := resolveInstallDir()
+		if err != nil {
+			return err
+		}
+		if err := installBinary(installDir); err != nil {
+			return err
+		}
 	}
 
-	// 2. 注入 wrapper 到 shell rc 文件
+	// 3. 注入 wrapper 到 shell rc 文件
 	shell := detectShell()
 	rcPath, err := rcFilePath(shell)
 	if err != nil {
@@ -167,14 +300,11 @@ func Install() error {
 	}
 
 	content := string(data)
-
-	// 检查是否已安装
 	if strings.Contains(content, installMarker) {
-		log.Print("-> 已安装到 %s", rcPath)
+		log.Print("-> wrapper 已存在于 %s", rcPath)
 		return nil
 	}
 
-	// 追加 wrapper
 	f, err := os.OpenFile(rcPath, os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("打开 %s 失败: %w", rcPath, err)
