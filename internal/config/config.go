@@ -64,7 +64,8 @@ func Exists() bool {
 	return err == nil
 }
 
-// Load 加载配置文件，不存在则返回默认配置
+// Load 加载配置文件，不存在则返回默认配置。
+// 如果检测到配置版本过旧，仅打印警告，由用户自行运行 'aicli setup' 更新。
 func Load() (*Config, error) {
 	p, err := Path()
 	if err != nil {
@@ -84,9 +85,34 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
 
+	// 版本过旧提示，不自动迁移、不打开编辑器
+	if cfg.ConfigVersion > 0 && cfg.ConfigVersion < defaultConfigVersion() {
+		log.Warn("配置文件版本过旧(v%d)，请在 'setup' 更新", cfg.ConfigVersion)
+	}
+
 	// 填充默认值（处理 struct 级零值，如 RequestBody nil）
 	fillDefaults(cfg)
 	return cfg, nil
+}
+
+// defaultConfigVersion 返回嵌入的 default.yaml 中的 config_version
+func defaultConfigVersion() int {
+	var cfg Config
+	if err := yaml.Unmarshal(defaultYAML, &cfg); err != nil {
+		return 0
+	}
+	return cfg.ConfigVersion
+}
+
+// getEditor 返回用户偏好的编辑器（$EDITOR > $VISUAL > vi）
+func getEditor() string {
+	if e := os.Getenv("EDITOR"); e != "" {
+		return e
+	}
+	if v := os.Getenv("VISUAL"); v != "" {
+		return v
+	}
+	return "vi"
 }
 
 // promptConfigUpdate 配置版本不匹配时提示用户是否更新
@@ -113,17 +139,42 @@ func promptConfigUpdate(configPath string, userVer, defVer int) bool {
 	return buf[0] == 'y' || buf[0] == 'Y'
 }
 
-// updateConfigFile 以 default.yaml 为模板合并用户已有值，结构和注释来自 default.yaml。
+// checkAndMigrateConfig 检查配置版本，过旧则提示用户并执行迁移。
+// 返回迁移后的文件数据（未迁移则返回原始 data）和 error。
+func checkAndMigrateConfig(configPath string, data []byte) ([]byte, error) {
+	var userCfg Config
+	if err := yaml.Unmarshal(data, &userCfg); err != nil {
+		return data, nil
+	}
+	var defCfg Config
+	yaml.Unmarshal(defaultYAML, &defCfg)
+	if userCfg.ConfigVersion >= defCfg.ConfigVersion {
+		return data, nil
+	}
+
+	if !promptConfigUpdate(configPath, userCfg.ConfigVersion, defCfg.ConfigVersion) {
+		return data, nil
+	}
+
+	if err := migrateConfigFile(configPath, data); err != nil {
+		log.Warn("更新配置文件失败: %v", err)
+		return data, nil
+	}
+
+	newData, err := os.ReadFile(configPath)
+	if err != nil {
+		return data, fmt.Errorf("读取迁移后配置失败: %w", err)
+	}
+	return newData, nil
+}
+
+// migrateConfigFile 以 default.yaml 为模板合并用户已有值，结构和注释来自 default.yaml。
 // 在内存中合并，最后一次性写入文件。返回 error 由调用方处理。
 // forbidden_patterns 和 dangerous_patterns 去重合并，其他 slice 保持替换。
-func updateConfigFile(configPath string, userData []byte) error {
+func migrateConfigFile(configPath string, userData []byte) error {
 	// 1. 备份原文件
 	backupPath := configPath + ".bak"
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("读取配置文件失败: %w", err)
-	}
-	if err := os.WriteFile(backupPath, data, 0600); err != nil {
+	if err := os.WriteFile(backupPath, userData, 0600); err != nil {
 		return fmt.Errorf("备份配置文件失败: %w", err)
 	}
 
@@ -187,6 +238,7 @@ func updateConfigFile(configPath string, userData []byte) error {
 }
 
 // mergeSliceDedup 合并两个 []any 字符串 slice 并去重
+// 当前仅用于 string 元素的 slice，非 string 元素不做去重（直接追加）。
 func mergeSliceDedup(base, extra []any) []any {
 	seen := make(map[string]bool, len(base)+len(extra))
 	result := make([]any, 0, len(base)+len(extra))
@@ -212,6 +264,7 @@ func mergeSliceDedup(base, extra []any) []any {
 }
 
 // deepMergeMap 深度合并：base 的结构保留，user 的值覆盖
+// 参数顺序：base 是默认值骨架，user 是用户值覆盖。
 func deepMergeMap(base, user map[string]any) map[string]any {
 	result := make(map[string]any, len(base))
 	maps.Copy(result, base)
@@ -425,43 +478,17 @@ func Setup(originalArgs []string) error {
 
 	// 备份旧配置内容
 	var backup []byte
-	if data, err := os.ReadFile(configPath); err == nil {
+	data, err := os.ReadFile(configPath)
+	if err == nil {
 		backup = data
-	}
-
-	// 检查配置版本，版本不同则提示用户在打开编辑器前更新配置文件
-	if data, err := os.ReadFile(configPath); err == nil {
-		var userCfg Config
-		if err := yaml.Unmarshal(data, &userCfg); err == nil {
-			var defCfg Config
-			yaml.Unmarshal(defaultYAML, &defCfg)
-			if userCfg.ConfigVersion < defCfg.ConfigVersion {
-				if promptConfigUpdate(configPath, userCfg.ConfigVersion, defCfg.ConfigVersion) {
-					if err := updateConfigFile(configPath, data); err != nil {
-						log.Warn("更新配置文件失败: %v", err)
-					} else {
-						// 同步更新备份，以便编辑器加载的就是新内容
-						backup = nil
-						if newData, err := os.ReadFile(configPath); err == nil {
-							backup = newData
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// 选择编辑器
-	editor := "vi"
-	if e := os.Getenv("EDITOR"); e != "" {
-		editor = e
-	} else if v := os.Getenv("VISUAL"); v != "" {
-		editor = v
+		data, _ = checkAndMigrateConfig(configPath, data)
+		// 同步更新备份，以便编辑器加载的就是新内容
+		backup = data
 	}
 
 EDITOR:
 	for {
-		cmd := exec.Command(editor, configPath)
+		cmd := exec.Command(getEditor(), configPath)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

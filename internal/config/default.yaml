@@ -1,4 +1,4 @@
-# ──── ai 默认配置 ────
+# ──── aicli 默认配置 ────
 config_version: 1
 api_key: ""
 base_url: "https://api.openai.com"
