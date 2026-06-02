@@ -1,12 +1,12 @@
 package llm
 
 import (
-	"maps"
 	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -136,6 +136,7 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 	}
 
 	var fullContent strings.Builder
+	var rawBuf strings.Builder // 累积原始 delta JSON
 	scanner := bufio.NewScanner(resp.Body)
 
 	for scanner.Scan() {
@@ -152,6 +153,25 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 		if err := json.Unmarshal([]byte(data), &cr); err != nil {
 			log.Debug("解析 SSE 失败: %v (data: %s)", err, data)
 			continue
+		}
+
+		// debug 模式下累积每个 chunk 的完整 delta 原始 JSON
+		if log.IsDebug() && len(cr.Choices) > 0 {
+			var rawMap map[string]any
+			if json.Unmarshal([]byte(data), &rawMap) == nil {
+				if choices, ok := rawMap["choices"].([]any); ok && len(choices) > 0 {
+					if choice, ok := choices[0].(map[string]any); ok {
+						if delta, ok := choice["delta"]; ok {
+							if deltaBytes, err := json.Marshal(delta); err == nil {
+								if rawBuf.Len() > 0 {
+									rawBuf.WriteByte(',')
+								}
+								rawBuf.Write(deltaBytes)
+							}
+						}
+					}
+				}
+			}
 		}
 
 		if len(cr.Choices) > 0 && cr.Choices[0].Delta.Content != "" {
@@ -172,6 +192,11 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 
 	log.Debug("完整响应: %s", result.FullContent)
 	log.Debug("耗时: %v", result.Duration)
+
+	// 输出完整原始响应体（包含 reasoning_content、thinking 等所有字段）
+	if log.IsDebug() && rawBuf.Len() > 0 {
+		log.Debug("原始响应体: [%s]", rawBuf.String())
+	}
 
 	return result, nil
 }
