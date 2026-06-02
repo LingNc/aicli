@@ -48,7 +48,8 @@ type message struct {
 type chatResponse struct {
 	Choices []struct {
 		Delta struct {
-			Content string `json:"content"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content,omitempty"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
@@ -139,7 +140,9 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 	}
 
 	var fullContent strings.Builder
-	var rawDeltas []json.RawMessage
+	var contentBuf strings.Builder
+	var reasoningBuf strings.Builder
+	var lastRaw json.RawMessage
 	scanner := bufio.NewScanner(resp.Body)
 
 	for scanner.Scan() {
@@ -158,19 +161,13 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 			continue
 		}
 
-		// debug 模式下累积每个 chunk 的完整 delta 原始 JSON
-		if log.IsDebug() && len(cr.Choices) > 0 {
-			var rawMap map[string]any
-			if json.Unmarshal([]byte(data), &rawMap) == nil {
-				if choices, ok := rawMap["choices"].([]any); ok && len(choices) > 0 {
-					if choice, ok := choices[0].(map[string]any); ok {
-						if delta, ok := choice["delta"]; ok {
-							if deltaBytes, err := json.Marshal(delta); err == nil {
-								rawDeltas = append(rawDeltas, deltaBytes)
-							}
-						}
-					}
-				}
+		if len(cr.Choices) > 0 && log.IsDebug() {
+			delta := cr.Choices[0].Delta
+			if delta.Content != "" {
+				contentBuf.WriteString(delta.Content)
+			}
+			if delta.ReasoningContent != "" {
+				reasoningBuf.WriteString(delta.ReasoningContent)
 			}
 		}
 
@@ -178,6 +175,9 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 			chunk := cr.Choices[0].Delta.Content
 			fullContent.WriteString(chunk)
 			callback(chunk)
+		}
+		if log.IsDebug() {
+			lastRaw = json.RawMessage(data)
 		}
 	}
 
@@ -190,13 +190,27 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 		Duration:    time.Since(start),
 	}
 
-	log.Debug("完整响应: %s", result.FullContent)
+	log.Debug("完整响应: %q", result.FullContent)
 	log.Debug("耗时: %v", result.Duration)
 
-	// 输出完整原始响应体（包含 reasoning_content、thinking 等所有字段）
-	if log.IsDebug() && len(rawDeltas) > 0 {
-		rawBytes, _ := json.Marshal(rawDeltas)
-		log.Debug("原始响应体: %s", string(rawBytes))
+	// 输出完整原始响应体：以最后一个 chunk 为基础，替换 delta 为合并后的完整 message
+	if log.IsDebug() && len(lastRaw) > 0 {
+		var lastObj map[string]any
+		if json.Unmarshal(lastRaw, &lastObj) == nil {
+			if choices, ok := lastObj["choices"].([]any); ok && len(choices) > 0 {
+				if choice, ok := choices[0].(map[string]any); ok {
+					choice["message"] = map[string]any{
+						"role":              "assistant",
+						"content":           contentBuf.String(),
+						"reasoning_content": reasoningBuf.String(),
+					}
+					delete(choice, "delta")
+				}
+			}
+			if b, err := json.MarshalIndent(lastObj, "", "  "); err == nil {
+				log.Debug("原始响应体: %s", string(b))
+			}
+		}
 	}
 
 	return result, nil
