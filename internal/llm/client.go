@@ -119,7 +119,14 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 	}
 
 	log.Debug("请求 URL: %s", url)
-	log.Debug("请求体: %s", string(body))
+	if log.IsDebug() {
+		var pretty bytes.Buffer
+		if json.Indent(&pretty, body, "", "  ") == nil {
+			log.Debug("请求体:\n%s", pretty.String())
+		} else {
+			log.Debug("请求体: %s", string(body))
+		}
+	}
 
 	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {

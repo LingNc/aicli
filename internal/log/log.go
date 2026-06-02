@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 var (
@@ -51,7 +52,7 @@ func Init(debugFlag bool, consoleDebug bool, logDir string) error {
 	}
 
 	// 构造文件名: YYYY-MM-DD_HH-MM-SS.log，同名追加 _1, _2
-	baseName := time.Now().Format("2006-01-02_15-04-05")
+	baseName := "ai_" + time.Now().Format("2006-01-02_15-04-05")
 	candidate := filepath.Join(logDir, baseName+".log")
 	path := candidate
 	for i := 1; ; i++ {
@@ -72,11 +73,10 @@ func Init(debugFlag bool, consoleDebug bool, logDir string) error {
 func Close() string {
 	mu.Lock()
 	defer mu.Unlock()
-	if logFile == nil {
-		return ""
+	if logFile != nil {
+		logFile.Close()
+		logFile = nil
 	}
-	logFile.Close()
-	logFile = nil
 	return logPath
 }
 
@@ -178,4 +178,47 @@ func ClearStderrLine() {
 // Bell 响铃（\a）。仅控制台，不写日志。
 func Bell() {
 	fmt.Fprint(os.Stderr, "\a")
+}
+
+// Rename 重命名当前日志文件，在原名后追加 _summary。
+// summary 会被清洗为仅保留中文/字母/数字/短横线/下划线，截断至 maxLen 字节。
+// 必须在所有日志写入完成后才能调用，调用后日志文件将被关闭。
+func Rename(summary string) {
+	mu.Lock()
+	defer mu.Unlock()
+	if logFile == nil || logPath == "" || summary == "" {
+		return
+	}
+	logFile.Close()
+	logFile = nil
+
+	clean := sanitizeSummary(summary, 30)
+	if clean == "" {
+		return
+	}
+
+	dir := filepath.Dir(logPath)
+	ext := filepath.Ext(logPath)
+	base := strings.TrimSuffix(filepath.Base(logPath), ext)
+	newPath := filepath.Join(dir, base+"_"+clean+ext)
+	if err := os.Rename(logPath, newPath); err == nil {
+		logPath = newPath
+	}
+}
+
+// sanitizeSummary 清洗摘要文本：仅保留中文、字母、数字、短横线、下划线，截断至 maxLen 字节。
+func sanitizeSummary(s string, maxLen int) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r == '-' || r == '_' ||
+			(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			(r >= 0x4e00 && r <= 0x9fff) {
+			if b.Len()+utf8.RuneLen(r) > maxLen {
+				break
+			}
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

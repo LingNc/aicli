@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +32,8 @@ func parseArgs(args []string) (debug bool, showVersion bool, subcommand string, 
 			os.Exit(0)
 		} else if arg == "setup" {
 			subcommand = "setup"
+		} else if arg == "log" {
+			subcommand = "log"
 		} else if arg == "shell" && i+1 < len(args) {
 			subcommand = "shell"
 			subAction = args[i+1]
@@ -55,6 +59,7 @@ func showHelp() {
 	fmt.Fprintf(w, "用法: ai [-d] [-v] <查询>\n\n")
 	fmt.Fprintf(w, "子命令:\n")
 	printOption("setup", "配置 API 密钥和模型")
+	printOption("log", "打开最新的调试日志")
 	printOption("shell install", "安装 shell 集成")
 	printOption("shell uninstall", "卸载 shell 集成")
 	fmt.Fprintf(w, "\n选项:\n")
@@ -114,6 +119,19 @@ func run() int {
 			log.Info("用法: ai shell install | uninstall")
 			return 1
 		}
+		return 0
+	}
+
+	// 处理 log 子命令（不需要加载配置）
+	if subcommand == "log" {
+		logDir := resolveLogDir("")
+		latest := findLatestLog(logDir)
+		if latest == "" {
+			log.Info("没有找到日志文件")
+			return 1
+		}
+		log.Info("-> %s", latest)
+		openFile(latest)
 		return 0
 	}
 
@@ -290,10 +308,68 @@ func run() int {
 		<-streamDone
 	}
 
+	// 写入日志摘要（取 parser 的 explanation 作为文件名）
+	if parser.Result != nil && parser.Result.Explanation != "" {
+		log.Rename(parser.Result.Explanation)
+	}
+
 	// 21. 根据退出码退出
 	if exitCode != 0 {
 		return exitCode
 	}
 
 	return 0
+}
+
+// resolveLogDir 获取日志目录（默认 ~/.aicli/log/）
+func resolveLogDir(logDir string) string {
+	if logDir == "" {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, ".aicli", "log")
+	}
+	if strings.HasPrefix(logDir, "~") {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, strings.TrimPrefix(logDir, "~"))
+	}
+	return logDir
+}
+
+// findLatestLog 查找目录中最新的 .log 文件
+func findLatestLog(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	var latest string
+	var latestMod time.Time
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".log") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(latestMod) {
+			latestMod = info.ModTime()
+			latest = filepath.Join(dir, e.Name())
+		}
+	}
+	return latest
+}
+
+// openFile 用编辑器打开文件
+func openFile(path string) {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = os.Getenv("VISUAL")
+	}
+	if editor == "" {
+		editor = "vi"
+	}
+	cmd := exec.Command(editor, path)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
 }
