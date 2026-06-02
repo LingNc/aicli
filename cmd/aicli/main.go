@@ -15,6 +15,7 @@ import (
 	"github.com/lingnc/aicli/internal/log"
 	"github.com/lingnc/aicli/internal/rules"
 	"github.com/lingnc/aicli/internal/shell"
+	"github.com/lingnc/aicli/internal/utils"
 )
 
 var version = "v0.1.0"
@@ -129,7 +130,7 @@ func run() int {
 
 	// 处理 log 子命令（不需要加载配置）
 	if subcommand == "log" {
-		logDir := log.ResolveDir("")
+		logDir := utils.ResolveDir("")
 		if userInput != "" {
 			// 有关键词：模糊匹配
 			latest := log.FindMatching(logDir, userInput)
@@ -340,7 +341,7 @@ func run() int {
 
 // openReadOnly 用编辑器以只读模式打开文件
 func openReadOnly(path string) {
-	editor := config.GetEditor()
+	editor := utils.GetEditor()
 	cmd := exec.Command(editor, readOnlyArgs(editor, path)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

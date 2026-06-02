@@ -7,19 +7,6 @@ import (
 	"time"
 )
 
-// ResolveDir 获取日志目录（默认 ~/.aicli/log/）
-func ResolveDir(logDir string) string {
-	if logDir == "" {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, ".aicli", "log")
-	}
-	if strings.HasPrefix(logDir, "~") {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, strings.TrimPrefix(logDir, "~"))
-	}
-	return logDir
-}
-
 // FindLatest 查找目录中最新的 .log 文件
 func FindLatest(dir string) string {
 	entries, err := os.ReadDir(dir)

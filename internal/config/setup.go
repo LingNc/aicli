@@ -4,22 +4,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 
 	"github.com/lingnc/aicli/internal/log"
+	"github.com/lingnc/aicli/internal/utils"
 	"golang.org/x/term"
 )
-
-// GetEditor 返回用户偏好的编辑器（$EDITOR > $VISUAL > vi）
-func GetEditor() string {
-	if e := os.Getenv("EDITOR"); e != "" {
-		return e
-	}
-	if v := os.Getenv("VISUAL"); v != "" {
-		return v
-	}
-	return "vi"
-}
 
 // promptConfigUpdate 配置版本不匹配时提示用户是否更新
 func promptConfigUpdate(configPath string, userVer, defVer int) bool {
@@ -45,13 +34,6 @@ func promptConfigUpdate(configPath string, userVer, defVer int) bool {
 	return buf[0] == 'y' || buf[0] == 'Y'
 }
 
-// formatError 将错误信息压缩为单行（多行换行替换为空格，并压缩连续空白）
-func formatError(err error) string {
-	s := strings.ReplaceAll(err.Error(), "\n", " ")
-	s = strings.ReplaceAll(s, "\r", "")
-	return strings.Join(strings.Fields(s), " ")
-}
-
 // promptRetry 处理验证失败后的重试选择（单键输入，无需回车）
 // 返回: "retry"=重新编辑, "cancel"=放弃, "force"=强制保存
 func promptRetry(validationErr error, configPath string, backup []byte) string {
@@ -59,7 +41,7 @@ func promptRetry(validationErr error, configPath string, backup []byte) string {
 	oldState, rawErr := term.MakeRaw(fd) // 改用 rawErr，不再遮蔽 validationErr
 	if rawErr != nil {
 		// 非终端环境 fallback（需要回车确认）
-		fmt.Fprintf(os.Stderr, "错误: %s\n", formatError(validationErr))
+		fmt.Fprintf(os.Stderr, "错误: %s\n", utils.FormatError(validationErr))
 		fmt.Fprintf(os.Stderr, "[e]重新编辑 / [x]放弃 / [f]强制保存 ")
 		var choice string
 		fmt.Scanln(&choice)
@@ -82,7 +64,7 @@ func promptRetry(validationErr error, configPath string, backup []byte) string {
 
 	// raw 模式：\r\033[K 先回到行首并清除行尾，再打印错误，确保旧内容被完全覆盖
 	fmt.Fprintf(os.Stderr, "\r\033[K[e]重新编辑 / [x]放弃 / [f]强制保存 \r\n")
-	fmt.Fprintf(os.Stderr, "-> 错误: %s", formatError(validationErr))
+	fmt.Fprintf(os.Stderr, "-> 错误: %s", utils.FormatError(validationErr))
 
 	for {
 		buf := make([]byte, 1)
@@ -137,7 +119,7 @@ func Setup(originalArgs []string) error {
 
 EDITOR:
 	for {
-		cmd := exec.Command(GetEditor(), configPath)
+		cmd := exec.Command(utils.GetEditor(), configPath)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
