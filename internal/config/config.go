@@ -188,14 +188,56 @@ func migrateConfigFile(configPath string, userData []byte) error {
 	lines := strings.Split(string(defaultYAML), "\n")
 	replaced := make(map[string]bool)
 	templateKeys := make(map[string]bool) // 记录模板中所有顶层 key
+
+	// 解析用户的 request_body 子键值
+	var userRB map[string]any
+	if rb, ok := userMap["request_body"].(map[string]any); ok {
+		userRB = rb
+	}
+
+	inRequestBody := false   // 当前是否在 request_body 块内
+	requestBodyIndent := 0   // request_body 子行的缩进层级
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || trimmed[0] == '#' {
 			continue
 		}
+
+		// 检测进入/退出 request_body 块
+		if len(line) > 0 && (line[0] != ' ' && line[0] != '\t') {
+			inRequestBody = false // 新的顶层 key，退出 request_body 块
+		}
+
 		// 只处理顶层 key
 		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
-			continue // 跳过非顶层行
+			// 非顶层行：如果在 request_body 块内，尝试替换子键值
+			if inRequestBody && userRB != nil {
+				// 检查缩进是否还在 request_body 内
+				lineIndent := len(line) - len(strings.TrimLeft(line, " \t"))
+				if lineIndent <= requestBodyIndent {
+					inRequestBody = false
+				} else {
+					// 尝试提取子键并替换
+					subIdx := strings.Index(trimmed, ":")
+					if subIdx > 0 {
+						subKey := strings.TrimSpace(trimmed[:subIdx])
+						if subVal, ok := userRB[subKey]; ok {
+							if _, isMap := subVal.(map[string]any); !isMap {
+								// 标量子键：替换值，保留注释
+								subIndent := line[:lineIndent]
+								comment := ""
+								ci := strings.Index(trimmed, " #")
+								if ci > subIdx {
+									comment = trimmed[ci:]
+								}
+								lines[i] = subIndent + subKey + ": " + formatYAMLScalar(subVal) + comment
+							}
+							// 嵌套 map（如 extra_body）保留模板结构
+						}
+					}
+				}
+			}
+			continue
 		}
 		idx := strings.Index(trimmed, ":")
 		if idx < 0 {
@@ -204,8 +246,15 @@ func migrateConfigFile(configPath string, userData []byte) error {
 		key := strings.TrimSpace(trimmed[:idx])
 		templateKeys[key] = true
 
-		// 跳过 config_version、request_body 和复杂字段（slice、嵌套 map）
-		if key == "config_version" || key == "request_body" {
+		// 标记进入 request_body 块
+		if key == "request_body" {
+			inRequestBody = true
+			requestBodyIndent = len(line) - len(strings.TrimLeft(line, " \t")) // request_body 自身缩进
+			continue
+		}
+
+		// 跳过 config_version 和复杂字段（slice、嵌套 map）
+		if key == "config_version" {
 			continue
 		}
 		userVal, exists := userMap[key]
