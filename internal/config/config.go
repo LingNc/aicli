@@ -82,9 +82,43 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
 
-	// 填充默认值
+	// 填充默认值（处理 struct 级零值，如 RequestBody nil）
 	fillDefaults(cfg)
 	return cfg, nil
+}
+
+// mergeDefaults 将 default.yaml 中的缺失顶层 key 合并到用户配置（跳过 request_body）。
+// 返回合并后的 YAML 字节和是否有变更。
+func mergeDefaults(userData []byte) ([]byte, bool) {
+	var userMap map[string]any
+	if err := yaml.Unmarshal(userData, &userMap); err != nil {
+		return userData, false
+	}
+	var defMap map[string]any
+	if err := yaml.Unmarshal(defaultYAML, &defMap); err != nil {
+		return userData, false
+	}
+
+	changed := false
+	for k, v := range defMap {
+		if k == "request_body" {
+			continue // 请求体由用户自行管理，不自动补充
+		}
+		if _, exists := userMap[k]; !exists {
+			userMap[k] = v
+			changed = true
+		}
+	}
+
+	if !changed {
+		return userData, false
+	}
+
+	merged, err := yaml.Marshal(userMap)
+	if err != nil {
+		return userData, false
+	}
+	return merged, true
 }
 
 // loadDefault 从嵌入的默认配置加载
@@ -97,6 +131,7 @@ func loadDefault() (*Config, error) {
 }
 
 // fillDefaults 用默认值填充空字段（基于反射，自动从 default.yaml 补全零值）
+// 跳过 RequestBody 字段，请求体由用户自行管理。
 func fillDefaults(cfg *Config) {
 	var defaults Config
 	if err := yaml.Unmarshal(defaultYAML, &defaults); err != nil {
@@ -108,6 +143,9 @@ func fillDefaults(cfg *Config) {
 	t := cfgV.Type()
 
 	for i := 0; i < t.NumField(); i++ {
+		if t.Field(i).Name == "RequestBody" {
+			continue // 请求体不自动填充
+		}
 		field := cfgV.Field(i)
 		if field.IsZero() {
 			field.Set(defV.Field(i))
@@ -299,6 +337,13 @@ EDITOR:
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("打开编辑器失败: %w", err)
+		}
+
+		// 自动补充缺失字段（跳过 request_body），有变更则回写文件
+		if data, err := os.ReadFile(configPath); err == nil {
+			if merged, changed := mergeDefaults(data); changed {
+				_ = os.WriteFile(configPath, merged, 0600)
+			}
 		}
 
 		cfg, err := Load()
