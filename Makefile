@@ -1,7 +1,10 @@
-.PHONY: build run test clean install lint
+.PHONY: build debug run test clean install lint
 
 build:
 	go build -ldflags="-s -w" -o aicli ./cmd/aicli/
+
+debug:
+	go build -o aicli ./cmd/aicli/
 
 run: build
 	./aicli $(ARGS)

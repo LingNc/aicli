@@ -3,5 +3,52 @@
 		{
 			"path": "."
 		}
-	]
+	],
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"name": "ai 调试",
+				"type": "go",
+				"request": "launch",
+				"mode": "debug",
+				"program": "${workspaceFolder}/cmd/aicli",
+				"args": ["查看内存"],
+				"console": "integratedTerminal",
+				"preLaunchTask": "debug"
+			},
+			{
+				"name": "ai setup",
+				"type": "go",
+				"request": "launch",
+				"mode": "debug",
+				"program": "${workspaceFolder}/cmd/aicli",
+				"args": ["setup"],
+				"console": "integratedTerminal",
+				"preLaunchTask": "debug"
+			}
+		]
+	},
+	"tasks": {
+		"version": "2.0.0",
+		"tasks": [
+			{
+				"label": "build",
+				"type": "shell",
+				"command": "make build",
+				"group": {
+					"kind": "build",
+					"isDefault": true
+				},
+				"problemMatcher": "$go"
+			},
+			{
+				"label": "debug",
+				"type": "shell",
+				"command": "make debug",
+				"group": "build",
+				"problemMatcher": "$go"
+			}
+		]
+	}
 }
