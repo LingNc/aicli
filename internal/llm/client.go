@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"maps"
 	"bufio"
 	"bytes"
 	"encoding/json"
@@ -65,6 +66,22 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 
 	url := strings.TrimRight(c.cfg.BaseURL, "/") + "/v1/chat/completions"
 
+	temp := 0.1
+	if v, ok := c.cfg.RequestBody["temperature"]; ok {
+		if f, ok := v.(float64); ok {
+			temp = f
+		}
+	}
+	maxTok := 1024
+	if v, ok := c.cfg.RequestBody["max_tokens"]; ok {
+		switch n := v.(type) {
+		case int:
+			maxTok = n
+		case float64:
+			maxTok = int(n)
+		}
+	}
+
 	reqBody := chatRequest{
 		Model: c.cfg.Model,
 		Messages: []message{
@@ -72,8 +89,8 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 			{Role: "user", Content: fmt.Sprintf("[时间: %s]\n%s", time.Now().Format("2006-01-02 15:04:05"), userInput)},
 		},
 		Stream:      true,
-		Temperature: 0.1,
-		MaxTokens:   1024,
+		Temperature: temp,
+		MaxTokens:   maxTok,
 	}
 
 	// reqBody 是纯值类型，Marshal 必定成功
@@ -81,9 +98,15 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 	var bodyMap map[string]any
 	_ = json.Unmarshal(bodyBytes, &bodyMap)
 
-	// 合并 extra_body
-	for k, v := range c.cfg.ExtraBody {
+	// 合并 request_body 中的额外参数（extra_body 子 map 展平合并）
+	for k, v := range c.cfg.RequestBody {
+		if k == "temperature" || k == "max_tokens" || k == "extra_body" {
+			continue // 已处理或单独处理
+		}
 		bodyMap[k] = v
+	}
+	if eb, ok := c.cfg.RequestBody["extra_body"].(map[string]any); ok {
+		maps.Copy(bodyMap, eb)
 	}
 
 	body, err := json.Marshal(bodyMap)
@@ -147,7 +170,7 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 		Duration:    time.Since(start),
 	}
 
-	log.Debug("完整响应: %q", result.FullContent)
+	log.Debug("完整响应: %s", result.FullContent)
 	log.Debug("耗时: %v", result.Duration)
 
 	return result, nil

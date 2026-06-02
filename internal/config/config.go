@@ -1,14 +1,14 @@
 package config
 
 import (
-	"reflect"
-	"slices"
 	_ "embed"
 	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/lingnc/aicli/internal/log"
@@ -31,7 +31,7 @@ type Config struct {
 	Whitelist         []string       `yaml:"whitelist"`
 	ForbiddenPatterns []string       `yaml:"forbidden_patterns"` // 用户扩展的禁止命令
 	DangerousPatterns []string       `yaml:"dangerous_patterns"` // 用户扩展的需确认命令
-	ExtraBody         map[string]any `yaml:"extra_body"`
+	RequestBody       map[string]any `yaml:"request_body"`       // 请求体参数，直接合并到 API 请求 JSON
 }
 
 // Dir 返回配置目录路径 (~/.aicli)

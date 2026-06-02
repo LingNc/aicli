@@ -28,10 +28,18 @@ dangerous_patterns:
   - "chmod -R"
   - "chown -R"
 
-# ──── 额外请求体参数（直接合并到 API 请求 JSON）────
-# 不同提供商关闭/开启思考模式的方式不同，按需配置：
-#   OpenAI 兼容: extra_body: {"thinking": {"type": "disabled"}}
-#   部分模型:    extra_body: {"enable_thinking": false}
-#   部分模型:    extra_body: {"thinking": false}
-# 默认为空，不注入任何额外参数
-extra_body: {}
+# ──── 请求体参数（直接合并到 API 请求 JSON）────
+# temperature / max_tokens 为标准参数
+# 其他参数按提供商需求添加，例如：
+#   enable_thinking: false                 # 某些提供商
+#   thinking: {"type": "disabled"}         # Anthropic 风格
+#   extra_body: {"enable_thinking": false} # DeepSeek
+#   extra_body: {"thinking": {"type": "disabled"}}
+#   extra_body: {"thinking": false}
+request_body:
+  temperature: 0.1
+  max_tokens: 1024
+
+  extra_body: {
+    "enable_thinking": false
+  }
