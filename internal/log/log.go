@@ -151,9 +151,9 @@ func Fatal(format string, args ...interface{}) {
 func Print(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Println(msg)
+	mu.Lock()
+	defer mu.Unlock()
 	if logFile != nil {
-		mu.Lock()
-		defer mu.Unlock()
 		ts := time.Now().Format("2006-01-02 15:04:05")
 		fmt.Fprintf(logFile, "[%s] [PRINT] %s\n", ts, msg)
 	}
@@ -162,9 +162,9 @@ func Print(format string, args ...interface{}) {
 // PrintRaw 输出原始内容到 stdout，不加换行、不转义。
 func PrintRaw(s string) {
 	fmt.Print(s)
+	mu.Lock()
+	defer mu.Unlock()
 	if logFile != nil {
-		mu.Lock()
-		defer mu.Unlock()
 		// PrintRaw 不加换行也不带时间戳，按追加方式写入
 		fmt.Fprint(logFile, s)
 	}

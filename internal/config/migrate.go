@@ -18,6 +18,7 @@ func checkAndMigrateConfig(configPath string, data []byte) ([]byte, error) {
 		return data, nil
 	}
 	var defCfg Config
+	// 解析嵌入的 defaultYAML（编译时常量，解析必定成功）
 	yaml.Unmarshal(defaultYAML, &defCfg)
 	if userCfg.ConfigVersion >= defCfg.ConfigVersion {
 		return data, nil

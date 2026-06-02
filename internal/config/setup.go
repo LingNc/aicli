@@ -10,8 +10,8 @@ import (
 	"golang.org/x/term"
 )
 
-// getEditor 返回用户偏好的编辑器（$EDITOR > $VISUAL > vi）
-func getEditor() string {
+// GetEditor 返回用户偏好的编辑器（$EDITOR > $VISUAL > vi）
+func GetEditor() string {
 	if e := os.Getenv("EDITOR"); e != "" {
 		return e
 	}
@@ -137,7 +137,7 @@ func Setup(originalArgs []string) error {
 
 EDITOR:
 	for {
-		cmd := exec.Command(getEditor(), configPath)
+		cmd := exec.Command(GetEditor(), configPath)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

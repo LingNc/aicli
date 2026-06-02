@@ -34,6 +34,11 @@ func parseArgs(args []string) (debug bool, showVersion bool, subcommand string, 
 			subcommand = "setup"
 		} else if arg == "log" {
 			subcommand = "log"
+			// 收集后续关键词
+			if i+1 < len(args) {
+				userInput = strings.Join(args[i+1:], " ")
+			}
+			break
 		} else if arg == "shell" && i+1 < len(args) {
 			subcommand = "shell"
 			subAction = args[i+1]
@@ -76,7 +81,7 @@ func main() {
 	code := run()
 	path := log.Close()
 	if path != "" {
-		log.Info("-> 调试日志已保存: %s", path)
+		log.Info("-> 调试日志已保存: %s (使用 'ai log' 查看)", path)
 	}
 	os.Exit(code)
 }
@@ -124,14 +129,26 @@ func run() int {
 
 	// 处理 log 子命令（不需要加载配置）
 	if subcommand == "log" {
-		logDir := resolveLogDir("")
-		latest := findLatestLog(logDir)
-		if latest == "" {
-			log.Info("没有找到日志文件")
-			return 1
+		logDir := log.ResolveDir("")
+		if userInput != "" {
+			// 有关键词：模糊匹配
+			latest := log.FindMatching(logDir, userInput)
+			if latest == "" {
+				log.Info("没有匹配 '%s' 的日志文件", userInput)
+				return 1
+			}
+			log.Info("-> %s", latest)
+			openReadOnly(latest)
+		} else {
+			// 无关键词：打开最新日志
+			latest := log.FindLatest(logDir)
+			if latest == "" {
+				log.Info("没有找到日志文件")
+				return 1
+			}
+			log.Info("-> %s", latest)
+			openReadOnly(latest)
 		}
-		log.Info("-> %s", latest)
-		openFile(latest)
 		return 0
 	}
 
@@ -298,7 +315,7 @@ func run() int {
 		return 1
 	}
 
-	// 19. 写入临时文件
+	// 19. 写入临时文件供 shell 集成读取；失败不影响主流程
 	tmpfile := "/tmp/ai-cmd-" + strconv.Itoa(os.Getppid()) + ".txt"
 	os.WriteFile(tmpfile, []byte(finalCommand), 0644)
 
@@ -321,55 +338,25 @@ func run() int {
 	return 0
 }
 
-// resolveLogDir 获取日志目录（默认 ~/.aicli/log/）
-func resolveLogDir(logDir string) string {
-	if logDir == "" {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, ".aicli", "log")
-	}
-	if strings.HasPrefix(logDir, "~") {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, strings.TrimPrefix(logDir, "~"))
-	}
-	return logDir
-}
-
-// findLatestLog 查找目录中最新的 .log 文件
-func findLatestLog(dir string) string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return ""
-	}
-	var latest string
-	var latestMod time.Time
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".log") {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		if info.ModTime().After(latestMod) {
-			latestMod = info.ModTime()
-			latest = filepath.Join(dir, e.Name())
-		}
-	}
-	return latest
-}
-
-// openFile 用编辑器打开文件
-func openFile(path string) {
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = os.Getenv("VISUAL")
-	}
-	if editor == "" {
-		editor = "vi"
-	}
-	cmd := exec.Command(editor, path)
+// openReadOnly 用编辑器以只读模式打开文件
+func openReadOnly(path string) {
+	editor := config.GetEditor()
+	cmd := exec.Command(editor, readOnlyArgs(editor, path)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Run()
+}
+
+// readOnlyArgs 返回编辑器的只读模式参数
+func readOnlyArgs(editor, path string) []string {
+	base := filepath.Base(editor)
+	switch base {
+	case "vim", "vi", "nvim", "gvim":
+		return []string{"-R", path}
+	case "nano":
+		return []string{"-v", path}
+	default:
+		return []string{path}
+	}
 }
