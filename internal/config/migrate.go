@@ -49,12 +49,14 @@ func migrateConfigFile(configPath string, userData []byte) error {
 	if err := os.WriteFile(backupPath, userData, 0600); err != nil {
 		return fmt.Errorf("备份配置文件失败: %w", err)
 	}
+	log.Debug("备份配置到: %s", backupPath)
 
 	// 2. 解析用户值
 	var userMap map[string]any
 	if err := yaml.Unmarshal(userData, &userMap); err != nil {
 		return fmt.Errorf("解析用户配置失败: %w", err)
 	}
+	log.Debug("解析用户配置完成")
 
 	// 3. 以 defaultYAML 为模板，逐行替换用户已有值
 	lines := strings.Split(string(defaultYAML), "\n")

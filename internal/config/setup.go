@@ -123,11 +123,13 @@ EDITOR:
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+		log.Debug("打开编辑器: %s", configPath)
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("打开编辑器失败: %w", err)
 		}
 
 		cfg, err := Load()
+		log.Debug("重新加载配置完成, err=%v", err)
 		if err != nil {
 			result := promptRetry(err, configPath, backup)
 			switch result {
@@ -142,6 +144,7 @@ EDITOR:
 
 		if err := Validate(cfg); err != nil {
 			result := promptRetry(err, configPath, backup)
+			log.Debug("配置验证完成, err=%v", err)
 			switch result {
 			case "retry":
 				goto EDITOR

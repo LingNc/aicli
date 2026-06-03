@@ -82,6 +82,8 @@ func Execute(command string) (string, int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	log.Debug("执行命令: %s", command)
+
 	cmd := exec.CommandContext(ctx, "bash", "-c", command)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

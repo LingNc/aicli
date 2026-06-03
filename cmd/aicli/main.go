@@ -137,6 +137,7 @@ func run() int {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Error("加载配置失败: %v", err)
+		log.Debug("配置加载失败，进入交互式重试: %v", err)
 		fmt.Fprintf(os.Stderr, "-> 是否进入 setup 修改配置？[Y/n] ")
 		// 单键读取
 		fd := int(os.Stdin.Fd())
@@ -312,6 +313,7 @@ func run() int {
 	verdict := engine.Classify(finalCommand, cfg.Mode, finalCategory)
 
 	// 11.1 根据分类结果处理
+	log.Debug("规则分类: verdict=%v, mode=%s, aiCategory=%v", verdict, cfg.Mode, finalCategory)
 	switch verdict {
 	case rules.VerdictForbidden:
 		reason := engine.ForbiddenReason(finalCommand)
@@ -351,6 +353,7 @@ func run() int {
 	// 12.1 写入临时文件供 shell 集成读取；失败不影响主流程
 	tmpfile := "/tmp/ai-cmd-" + strconv.Itoa(os.Getppid()) + ".txt"
 	os.WriteFile(tmpfile, []byte(finalCommand), 0644)
+	log.Debug("写入临时文件: %s", tmpfile)
 
 	// 13. 等待流结束（如果命令先完整，流仍在后台接收 explanation）
 	// 若上面 select 已读取过 streamDone，则 streamErr 非 nil，跳过等待
