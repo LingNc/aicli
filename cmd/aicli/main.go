@@ -121,53 +121,7 @@ func run() int {
 		return 0
 	}
 
-	// 4. 检查配置文件，不存在则自动 Setup
-	if !config.Exists() {
-		log.Info("配置文件不存在，正在引导设置...")
-		if err := config.Setup(nil); err != nil {
-			log.Error("设置失败: %v", err)
-			return 4
-		}
-		if subcommand == "setup" {
-			return 0
-		}
-	}
-
-	// 5. 加载配置
-	cfg, err := config.Load()
-	if err != nil {
-		log.Error("加载配置失败: %v", err)
-		log.Debug("配置加载失败，进入交互式重试: %v", err)
-		fmt.Fprintf(os.Stderr, "-> 是否进入 setup 修改配置？[Y/n] ")
-		// 单键读取
-		fd := int(os.Stdin.Fd())
-		if term.IsTerminal(fd) {
-			oldState, err := term.MakeRaw(fd)
-			if err == nil {
-				defer term.Restore(fd, oldState)
-				buf := make([]byte, 1)
-				os.Stdin.Read(buf)
-				fmt.Fprintf(os.Stderr, "\r\033[K")
-				if buf[0] == 'n' || buf[0] == 'N' {
-					return 4
-				}
-			}
-		}
-		if err := config.Setup(nil); err != nil {
-			log.Error("设置失败: %v", err)
-			return 4
-		}
-		return 0
-	}
-
-	// 6. 验证配置
-	if err := config.Validate(cfg); err != nil {
-		log.Error("配置验证失败，请运行 ai setup: %v", err)
-		return 4
-	}
-
-	// 7. 处理子命令（setup/shell/log）
-	// 7.1 处理 setup 子命令
+	// 7.1 先处理 setup 子命令
 	if subcommand == "setup" {
 		if err := config.Setup(nil); err != nil {
 			log.Error("-> %v", err)
@@ -176,17 +130,75 @@ func run() int {
 		return 0
 	}
 
+	// 4. 检查配置文件，不存在则自动 Setup
+	if !config.Exists() {
+		log.Info("配置文件不存在，正在引导设置...")
+		if err := config.Setup(nil); err != nil {
+			log.Error("-> %v", err)
+			return 4
+		}
+	}
+
+	// 5. 加载配置
+	cfg, err := config.Load()
+	if err != nil {
+		log.Error("加载配置失败: %v", err)
+		return 4
+	}
+
+	// 6. 验证配置
+	if err := config.Validate(cfg); err != nil {
+		log.Error("配置验证失败: %v", err)
+		enterSetup := false
+		fmt.Fprintf(os.Stderr, "-> 是否进入 setup 修改配置？[Y/n] ")
+		fd := int(os.Stdin.Fd())
+		if term.IsTerminal(fd) {
+			oldState, rawErr := term.MakeRaw(fd)
+			if rawErr == nil {
+				buf := make([]byte, 1)
+				os.Stdin.Read(buf)
+				term.Restore(fd, oldState)
+				fmt.Fprintf(os.Stderr, "\r\033[1A\033[J")
+				if buf[0] != 'n' && buf[0] != 'N' {
+					enterSetup = true
+				}
+			}
+		} else {
+			enterSetup = true
+		}
+		if enterSetup {
+			if err := config.Setup(nil); err != nil {
+				log.Error("-> %v", err)
+				return 4
+			}
+			// 清理 Setup 的输出
+			fmt.Fprintf(os.Stderr, "\r\033[1A\033[J")
+			// 重新加载配置
+			cfg, err = config.Load()
+			if err != nil {
+				log.Error("[Load] 加载配置失败: %v", err)
+				return 4
+			}
+		} else {
+			// 用户取消
+			log.Info("-> 已取消")
+			return 4
+		}
+		// 有子命令时跳过 setup，继续执行
+	}
+
+	// 7. 处理子命令（setup/shell/log）
 	// 7.2 处理 shell 子命令
 	if subcommand == "shell" {
 		switch subAction {
 		case "install":
 			if err := shell.Install(); err != nil {
-				log.Error("安装失败: %v", err)
+				log.Error("[Shell] 安装失败: %v", err)
 				return 1
 			}
 		case "uninstall":
 			if err := shell.Uninstall(); err != nil {
-				log.Error("卸载失败: %v", err)
+				log.Error("[Shell] 卸载失败: %v", err)
 				return 1
 			}
 		default:
