@@ -186,6 +186,7 @@ func selectInstallScope() (string, error) {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		select {
 		case <-sigCh:
+			fmt.Fprintf(os.Stderr, "\033[?25h") // 显示光标
 			term.Restore(fd, oldState)
 			fmt.Fprintf(os.Stderr, "\r\033[K")
 			os.Exit(130)
@@ -196,8 +197,12 @@ func selectInstallScope() (string, error) {
 	options := []string{
 		"为所有人安装 (需要 root)",
 		"为自己安装",
+		"取消 [q]",
 	}
 	selected := 0
+
+	// 隐藏光标
+	fmt.Fprintf(os.Stderr, "\033[?25l")
 
 	// 首次绘制
 	drawMenu(options, selected)
@@ -214,28 +219,27 @@ func selectInstallScope() (string, error) {
 			// 方向键
 			switch buf[2] {
 			case 'A': // 上
-				if selected > 0 {
-					selected--
-					drawMenu(options, selected)
-				}
+				selected = (selected - 1 + len(options)) % len(options)
+				drawMenu(options, selected)
 			case 'B': // 下
-				if selected < len(options)-1 {
-					selected++
-					drawMenu(options, selected)
-				}
+				selected = (selected + 1) % len(options)
+				drawMenu(options, selected)
 			}
 		case buf[0] == '\r' || buf[0] == '\n': // Enter
-			// 清空菜单（上移到第一行 + 清除到末尾）
-			fmt.Fprintf(os.Stderr, "\033[%dA\033[J", len(options))
+			// 清空菜单
+			fmt.Fprintf(os.Stderr, "\033[%dA\033[J\033[?25h", len(options)-1)
 			signal.Stop(sigCh)
 			close(done)
 			term.Restore(fd, oldState)
+			if selected == 2 { // 取消
+				return "", fmt.Errorf("-> 取消")
+			}
 			if selected == 0 {
 				return "system", nil
 			}
 			return "user", nil
 		case buf[0] == 'q' || buf[0] == '\x03': // q 或 Ctrl-C
-			fmt.Fprintf(os.Stderr, "\033[%dA\033[J", len(options))
+			fmt.Fprintf(os.Stderr, "\033[J\033[?25h")
 			signal.Stop(sigCh)
 			close(done)
 			term.Restore(fd, oldState)
@@ -245,6 +249,7 @@ func selectInstallScope() (string, error) {
 		}
 	}
 
+	fmt.Fprintf(os.Stderr, "\033[?25h") // 显示光标
 	signal.Stop(sigCh)
 	close(done)
 	term.Restore(fd, oldState)

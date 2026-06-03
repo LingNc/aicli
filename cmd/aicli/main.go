@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +16,7 @@ import (
 	"github.com/lingnc/aicli/internal/utils"
 )
 
-var version = "v0.1.0"
+var version = "v0.1.1"
 
 // parseArgs 解析命令行参数
 // 返回: debug标志, 显示版本, 子命令, 子命令动作, 用户输入
@@ -139,7 +137,7 @@ func run() int {
 				return 1
 			}
 			log.Info("-> %s", latest)
-			openReadOnly(latest)
+			utils.OpenReadOnly(latest)
 		} else {
 			// 无关键词：打开最新日志
 			latest := log.FindLatest(logDir)
@@ -148,7 +146,7 @@ func run() int {
 				return 1
 			}
 			log.Info("-> %s", latest)
-			openReadOnly(latest)
+			utils.OpenReadOnly(latest)
 		}
 		return 0
 	}
@@ -337,27 +335,4 @@ func run() int {
 	}
 
 	return 0
-}
-
-// openReadOnly 用编辑器以只读模式打开文件
-func openReadOnly(path string) {
-	editor := utils.GetEditor()
-	cmd := exec.Command(editor, readOnlyArgs(editor, path)...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Run()
-}
-
-// readOnlyArgs 返回编辑器的只读模式参数
-func readOnlyArgs(editor, path string) []string {
-	base := filepath.Base(editor)
-	switch base {
-	case "vim", "vi", "nvim", "gvim":
-		return []string{"-R", path}
-	case "nano":
-		return []string{"-v", path}
-	default:
-		return []string{path}
-	}
 }

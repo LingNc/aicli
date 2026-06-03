@@ -2,6 +2,7 @@ package utils
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -35,4 +36,27 @@ func ResolveDir(logDir string) string {
 		return filepath.Join(home, strings.TrimPrefix(logDir, "~"))
 	}
 	return logDir
+}
+
+// OpenReadOnly 用编辑器以只读模式打开文件
+func OpenReadOnly(path string) {
+	editor := GetEditor()
+	cmd := exec.Command(editor, ReadOnlyArgs(editor, path)...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+}
+
+// ReadOnlyArgs 返回编辑器的只读模式参数
+func ReadOnlyArgs(editor, path string) []string {
+	base := filepath.Base(editor)
+	switch base {
+	case "vim", "vi", "nvim", "gvim":
+		return []string{"-R", path}
+	case "nano":
+		return []string{"-v", path}
+	default:
+		return []string{path}
+	}
 }
