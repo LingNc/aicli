@@ -7,6 +7,7 @@ mode: "ai"           # ai | rules | permissive
 debug: false
 debug_log_console: false
 debug_log_dir: ""
+max_log_name_len: 64
 
 # ──── 用户白名单（ai 模式直接执行）────
 whitelist: []

@@ -17,6 +17,7 @@ type Config struct {
 	Debug             bool           `yaml:"debug"`
 	DebugLogConsole   bool           `yaml:"debug_log_console"`
 	DebugLogDir       string         `yaml:"debug_log_dir"`
+	MaxLogNameLen     int            `yaml:"max_log_name_len"`
 	Whitelist         []string       `yaml:"whitelist"`
 	ForbiddenPatterns []string       `yaml:"forbidden_patterns"` // 用户扩展的禁止命令
 	DangerousPatterns []string       `yaml:"dangerous_patterns"` // 用户扩展的需确认命令

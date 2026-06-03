@@ -89,7 +89,7 @@ func run() int {
 	// 1. 解析参数
 	debug, showVersion, subcommand, subAction, userInput := parseArgs(os.Args[1:])
 
-	// 1.5 处理版本号显示
+	// 1.1 处理版本号显示
 	if showVersion {
 		fmt.Printf("ai %s\n", version)
 		fmt.Println("Author: LingNc")
@@ -97,7 +97,47 @@ func run() int {
 		return 0
 	}
 
-	// 2. 处理 setup 子命令
+	// 2. 检查配置文件，不存在则自动 Setup
+	if !config.Exists() {
+		log.Info("配置文件不存在，正在引导设置...")
+		if err := config.Setup(nil); err != nil {
+			log.Error("设置失败: %v", err)
+			return 4
+		}
+		log.Info("设置完成，正在继续...")
+	}
+
+	// 3. 加载配置
+	cfg, err := config.Load()
+	if err != nil {
+		log.Error("加载配置失败: %v", err)
+		return 4
+	}
+
+	// 4. 初始化日志系统（配置文件或 CLI 标志均可启用）
+	cwd, _ := os.Getwd()
+	fullCmd := cwd + "/ai " + strings.Join(os.Args[1:], " ")
+	cmdName := "ask"
+	if subcommand != "" {
+		cmdName = subcommand
+	}
+	maxNameLen := cfg.MaxLogNameLen
+	if maxNameLen <= 0 {
+		maxNameLen = 64
+	}
+	if err := log.Init(cfg.Debug || debug, cfg.DebugLogConsole, cfg.DebugLogDir, cmdName, fullCmd, maxNameLen); err != nil {
+		log.Error("初始化日志失败: %v", err)
+		return 4
+	}
+
+	// 5. 验证配置
+	if err := config.Validate(cfg); err != nil {
+		log.Error("配置验证失败，请运行 ai setup: %v", err)
+		return 4
+	}
+
+	// 6. 处理子命令
+	// 6.1 处理 setup 子命令
 	if subcommand == "setup" {
 		if err := config.Setup(nil); err != nil {
 			log.Error("-> %v", err)
@@ -106,7 +146,7 @@ func run() int {
 		return 0
 	}
 
-	// 2.5 处理 shell 子命令
+	// 6.2 处理 shell 子命令
 	if subcommand == "shell" {
 		switch subAction {
 		case "install":
@@ -126,7 +166,7 @@ func run() int {
 		return 0
 	}
 
-	// 处理 log 子命令（不需要加载配置）
+	// 6.3 处理 log 子命令
 	if subcommand == "log" {
 		logDir := utils.ResolveDir("")
 		if userInput != "" {
@@ -151,51 +191,22 @@ func run() int {
 		return 0
 	}
 
-	// 2.8 空参数优先显示 help
+	// 6.4 空参数优先显示 help
 	if userInput == "" {
 		showHelp()
 		return 0
 	}
 
-	// 3. 检查配置文件，不存在则自动 Setup
-	if !config.Exists() {
-		log.Info("配置文件不存在，正在引导设置...")
-		if err := config.Setup(nil); err != nil {
-			log.Error("设置失败: %v", err)
-			return 4
-		}
-		log.Info("设置完成，正在继续...")
-	}
-
-	// 4. 加载配置
-	cfg, err := config.Load()
-	if err != nil {
-		log.Error("加载配置失败: %v", err)
-		return 4
-	}
-
-	// 5. 初始化日志系统（配置文件或 CLI 标志均可启用）
-	if err := log.Init(cfg.Debug || debug, cfg.DebugLogConsole, cfg.DebugLogDir); err != nil {
-		log.Error("初始化日志失败: %v", err)
-		return 4
-	}
-
-	// 6. 验证配置
-	if err := config.Validate(cfg); err != nil {
-		log.Error("配置验证失败，请运行 ai setup: %v", err)
-		return 4
-	}
-
-	// 8. 创建 LLM 客户端
+	// 7. 创建 LLM 客户端
 	client := llm.New(cfg)
 
-	// 9. 创建命令解析器
+	// 7.1 创建命令解析器
 	parser := executor.NewParser()
 
-	// 10. 记录开始时间
+	// 7.2 记录开始时间
 	startTime := time.Now()
 
-	// 11. 流式聊天，使用 goroutine 接收流
+	// 8. 流式聊天，使用 goroutine 接收流
 	// 通过 channel 传递命令结果，避免主 goroutine 与流式 goroutine 之间的数据竞争
 	type cmdReady struct {
 		command  string
@@ -238,7 +249,7 @@ func run() int {
 		streamDone <- err
 	}()
 
-	// 12. 等待命令完成或流结束
+	// 8.1 等待命令完成或流结束
 	var cmd cmdReady
 	var streamErr error
 	select {
@@ -267,17 +278,17 @@ func run() int {
 		return 3
 	}
 
-	// 15. 调试信息
+	// 9. 调试信息
 	elapsed := time.Since(startTime)
 	log.Debug("分类: %v", finalCategory)
 	log.Debug("耗时: %v", elapsed)
 	log.Debug("命令: %s", finalCommand)
 
-	// 16. 规则引擎分类
+	// 10. 规则引擎分类
 	engine := rules.NewEngine(cfg)
 	verdict := engine.Classify(finalCommand, cfg.Mode, finalCategory)
 
-	// 17. 根据分类结果处理
+	// 10.1 根据分类结果处理
 	switch verdict {
 	case rules.VerdictForbidden:
 		reason := engine.ForbiddenReason(finalCommand)
@@ -307,29 +318,24 @@ func run() int {
 		// 直接执行，无操作
 	}
 
-	// 18. 执行命令
+	// 11. 执行命令
 	_, exitCode, err := executor.Execute(finalCommand)
 	if err != nil {
 		log.Error("命令执行失败: %v", err)
 		return 1
 	}
 
-	// 19. 写入临时文件供 shell 集成读取；失败不影响主流程
+	// 11.1 写入临时文件供 shell 集成读取；失败不影响主流程
 	tmpfile := "/tmp/ai-cmd-" + strconv.Itoa(os.Getppid()) + ".txt"
 	os.WriteFile(tmpfile, []byte(finalCommand), 0644)
 
-	// 20. 等待流结束（如果命令先完整，流仍在后台接收 explanation）
+	// 12. 等待流结束（如果命令先完整，流仍在后台接收 explanation）
 	// 若上面 select 已读取过 streamDone，则 streamErr 非 nil，跳过等待
 	if streamErr == nil {
 		<-streamDone
 	}
 
-	// 写入日志摘要（取 parser 的 explanation 作为文件名）
-	if parser.Result != nil && parser.Result.Explanation != "" {
-		log.Rename(parser.Result.Explanation)
-	}
-
-	// 21. 根据退出码退出
+	// 13. 根据退出码退出
 	if exitCode != 0 {
 		return exitCode
 	}
