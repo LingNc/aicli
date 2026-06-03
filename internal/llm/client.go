@@ -89,8 +89,9 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 	reqBody := chatRequest{
 		Model: c.cfg.Model,
 		Messages: []message{
-			{Role: "system", Content: fmt.Sprintf(prompt.System, prompt.BuildSystemInfo())},
-			{Role: "user", Content: fmt.Sprintf("[时间: %s]\n%s", time.Now().Format("2006-01-02 15:04:05"), userInput)},
+			{Role: "system", Content: prompt.System},
+			{Role: "user", Content: fmt.Sprintf("#( %s #)", prompt.BuildSystemInfo())},
+			{Role: "user", Content: fmt.Sprintf("#( %s #)\n%s", time.Now().Format("2006-01-02 15:04:05"), userInput)},
 		},
 		Stream:      true,
 		Temperature: temp,
