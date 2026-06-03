@@ -58,7 +58,8 @@ func Init(debugFlag bool, showDebug bool, cmdName string, fullCmd string) error 
 		if err == nil {
 			logFile = f
 			logPath = path
-			fmt.Fprintf(logFile, "[CMD] %s\n", fullCmd)
+			ts := time.Now().Format("2006-01-02 15:04:05")
+			fmt.Fprintf(logFile, "[%s] [CMD] %s\n", ts, fullCmd)
 			return nil
 		}
 		if !os.IsExist(err) {
