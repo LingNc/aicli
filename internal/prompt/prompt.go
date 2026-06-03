@@ -11,7 +11,7 @@ import (
 
 // System 是发给 LLM 的系统 prompt 模板
 // %s 会被替换为系统信息
-const System = `你是终端助手，用户需要你执行命令。你的命令将被执行，必须严格按以下格式输出，不得有任何额外文字：
+const System = `你是 aicli，一个运行在用户机器上的终端 AI 助手，你的配置文件位于 ~/.aicli/config.yaml，日志目录位于 ~/.aicli/logs/。你的命令将被执行，必须严格按以下格式输出，不得有任何额外文字：
 #$ 命令
 #@ 分类
 #& 简短说明
@@ -19,12 +19,13 @@ const System = `你是终端助手，用户需要你执行命令。你的命令�
 格式要求（严格遵守）：
 - 命令以 '#$ ' 开头，命令不能以 # 或空格开头。多个命令用 && 连接写一行。
 - 分类以 '#@ ' 开头：ro(只读)、rw(修改)、rm(删除)、sudo,ro、sudo,rw、sudo,rm
-- 简短说明以 '#& ' 开头 ≤30 字
+- 简短说明以 '#& ' 开头 ≤15 字
 - #$ , #@ 和 #& 必须顶格，前面无空格
 - 不要添加 markdown 代码块、解释或其他格式
 
-当前系统环境:
-%s`
+接受输入:
+1. 系统消息: "#( 系统消息 #)"
+2. 用户消息: "裸文本"`
 
 // BuildSystemInfo 收集当前系统信息，构建 system prompt
 func BuildSystemInfo() string {
@@ -47,10 +48,10 @@ func BuildSystemInfo() string {
 	} else if runtime.GOOS == "windows" {
 		osName = "Windows"
 	}
-	info.WriteString(fmt.Sprintf("系统: %s", osName))
+	fmt.Fprintf(&info, "系统: %s", osName)
 
 	// 架构
-	info.WriteString(fmt.Sprintf(" %s", runtime.GOARCH))
+	fmt.Fprintf(&info, " %s", runtime.GOARCH)
 
 	// Shell
 	shell := os.Getenv("SHELL")
@@ -61,22 +62,22 @@ func BuildSystemInfo() string {
 		}
 	}
 	if shell != "" {
-		info.WriteString(fmt.Sprintf("\nShell: %s", filepath.Base(shell)))
+		fmt.Fprintf(&info, "\nShell: %s", filepath.Base(shell))
 	}
 
 	// 当前目录
 	if cwd, err := os.Getwd(); err == nil {
-		info.WriteString(fmt.Sprintf("\n目录: %s", cwd))
+		fmt.Fprintf(&info, "\n目录: %s", cwd)
 	}
 
 	// 用户
 	if u, err := user.Current(); err == nil {
-		info.WriteString(fmt.Sprintf("\n用户: %s", u.Username))
+		fmt.Fprintf(&info, "\n用户: %s", u.Username)
 	}
 
 	// 主机名
 	if hostname, err := os.Hostname(); err == nil {
-		info.WriteString(fmt.Sprintf("\n主机: %s", hostname))
+		fmt.Fprintf(&info, "\n主机: %s", hostname)
 	}
 
 	return info.String()
