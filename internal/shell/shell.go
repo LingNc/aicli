@@ -204,42 +204,48 @@ func selectInstallScope() (string, error) {
 	// 隐藏光标
 	fmt.Fprintf(os.Stderr, "\033[?25l")
 
-	// 首次绘制
+	reader := NewInputReader()
+	reader.Start()
+	defer reader.Stop()
+
 	drawMenu(options, selected)
+	reader.DebugLog("初始位置")
 
-	buf := make([]byte, 3)
-	for {
-		n, err := os.Stdin.Read(buf)
-		if err != nil || n == 0 {
-			break
-		}
-
+	for ev := range reader.Keys() {
 		switch {
-		case buf[0] == '\x1b' && n >= 3 && buf[1] == '[':
-			// 方向键
-			switch buf[2] {
+		case len(ev.Raw) >= 3 && ev.Raw[0] == 0x1b && ev.Raw[1] == '[':
+			switch ev.Raw[2] {
 			case 'A': // 上
 				selected = (selected - 1 + len(options)) % len(options)
+				log.Debug("UP: selected=%d", selected)
+				reader.DebugLog("UP绘制前: selected=%d", selected)
 				drawMenu(options, selected)
+				reader.DebugLog("UP绘制后")
 			case 'B': // 下
 				selected = (selected + 1) % len(options)
+				log.Debug("DOWN: selected=%d", selected)
+				reader.DebugLog("DOWN绘制前: selected=%d", selected)
 				drawMenu(options, selected)
+				reader.DebugLog("DOWN绘制后")
 			}
-		case buf[0] == '\r' || buf[0] == '\n': // Enter
-			// 清空菜单
-			fmt.Fprintf(os.Stderr, "\033[%dA\033[J\033[?25h", len(options)-1)
+		case len(ev.Raw) == 1 && (ev.Raw[0] == '\r' || ev.Raw[0] == '\n'):
+			reader.DebugLog("Enter前: selected=%d", selected)
+			fmt.Fprintf(os.Stderr, "\033[%dA\033[J\033[?25h", len(options))
+			reader.DebugLog("Enter后")
 			signal.Stop(sigCh)
 			close(done)
 			term.Restore(fd, oldState)
-			if selected == 2 { // 取消
+			if selected == 2 {
 				return "", fmt.Errorf("-> 取消")
 			}
 			if selected == 0 {
 				return "system", nil
 			}
 			return "user", nil
-		case buf[0] == 'q' || buf[0] == '\x03': // q 或 Ctrl-C
+		case len(ev.Raw) == 1 && (ev.Raw[0] == 'q' || ev.Raw[0] == 0x03):
+			reader.DebugLog("Cancel 前")
 			fmt.Fprintf(os.Stderr, "\033[J\033[?25h")
+			reader.DebugLog("Cancel 后")
 			signal.Stop(sigCh)
 			close(done)
 			term.Restore(fd, oldState)
@@ -248,16 +254,12 @@ func selectInstallScope() (string, error) {
 			log.Bell()
 		}
 	}
-
-	fmt.Fprintf(os.Stderr, "\033[?25h") // 显示光标
-	signal.Stop(sigCh)
-	close(done)
-	term.Restore(fd, oldState)
 	return "user", nil
 }
 
 // drawMenu 绘制选择菜单
 func drawMenu(options []string, selected int) {
+	log.Debug("drawMenu: selected=%d/%d", selected, len(options))
 	for i, opt := range options {
 		prefix := "   "
 		if i == selected {
@@ -265,7 +267,6 @@ func drawMenu(options []string, selected int) {
 		}
 		fmt.Fprintf(os.Stderr, "\r\033[K%s%s\n", prefix, opt)
 	}
-	// 光标回到第一行
 	fmt.Fprintf(os.Stderr, "\033[%dA", len(options))
 }
 
