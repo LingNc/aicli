@@ -25,11 +25,11 @@ func FormatError(err error) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// ResolveDir 解析日志目录路径（默认 ~/.aicli/log/）
+// ResolveDir 解析日志目录路径（默认 ~/.aicli/logs/）
 func ResolveDir(logDir string) string {
 	if logDir == "" {
 		home, _ := os.UserHomeDir()
-		return filepath.Join(home, ".aicli", "log")
+		return filepath.Join(home, ".aicli", "logs")
 	}
 	if strings.HasPrefix(logDir, "~") {
 		home, _ := os.UserHomeDir()

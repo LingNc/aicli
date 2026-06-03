@@ -38,7 +38,7 @@ func Init(debugFlag bool, showDebug bool, cmdName string, fullCmd string) error 
 	if err != nil {
 		return fmt.Errorf("获取 home 目录失败: %w", err)
 	}
-	logDir := filepath.Join(home, ".aicli", "log")
+	logDir := filepath.Join(home, ".aicli", "logs")
 
 	if err := os.MkdirAll(logDir, 0700); err != nil {
 		return fmt.Errorf("创建日志目录失败: %w", err)
