@@ -14,16 +14,19 @@ import (
 	"github.com/lingnc/aicli/internal/rules"
 	"github.com/lingnc/aicli/internal/shell"
 	"github.com/lingnc/aicli/internal/utils"
+	"golang.org/x/term"
 )
 
 var version = "v0.1.1"
 
 // parseArgs 解析命令行参数
-// 返回: debug标志, 显示版本, 子命令, 子命令动作, 用户输入
-func parseArgs(args []string) (debug bool, showVersion bool, subcommand string, subAction string, userInput string) {
+// 返回: debug标志, showDebug标志, 显示版本, 子命令, 子命令动作, 用户输入
+func parseArgs(args []string) (debug bool, showDebug bool, showVersion bool, subcommand string, subAction string, userInput string) {
 	for i, arg := range args {
 		if arg == "-d" || arg == "--debug" {
 			debug = true
+		} else if arg == "-sd" || arg == "--show-debug" {
+			showDebug = true
 		} else if arg == "-v" || arg == "--version" {
 			showVersion = true
 		} else if arg == "-h" || arg == "--help" {
@@ -38,10 +41,12 @@ func parseArgs(args []string) (debug bool, showVersion bool, subcommand string, 
 				userInput = strings.Join(args[i+1:], " ")
 			}
 			break
-		} else if arg == "shell" && i+1 < len(args) {
+		} else if arg == "shell" {
 			subcommand = "shell"
-			subAction = args[i+1]
-			break
+			if i+1 < len(args) {
+				subAction = args[i+1]
+				i++ // 跳过 subAction
+			}
 		} else {
 			if userInput != "" {
 				userInput += " "
@@ -69,6 +74,7 @@ func showHelp() {
 	fmt.Fprintf(w, "\n选项:\n")
 	printOption("-v, --version", "显示版本号")
 	printOption("-d, --debug", "启用调试日志")
+	printOption("-sd, --show-debug", "调试信息同时输出到控制台")
 	printOption("-h, --help", "显示帮助信息")
 	fmt.Fprintf(w, "\n示例:\n")
 	fmt.Fprintf(w, "  ai 查看内存\n")
@@ -87,9 +93,21 @@ func main() {
 
 func run() int {
 	// 1. 解析参数
-	debug, showVersion, subcommand, subAction, userInput := parseArgs(os.Args[1:])
+	debug, showDebug, showVersion, subcommand, subAction, userInput := parseArgs(os.Args[1:])
 
-	// 1.1 处理版本号显示
+	// 2. 初始化日志系统（不依赖配置，可尽早启用）
+	cwd, _ := os.Getwd()
+	fullCmd := cwd + "/ai " + strings.Join(os.Args[1:], " ")
+	cmdName := "ask"
+	if subcommand != "" {
+		cmdName = subcommand
+	}
+	if err := log.Init(debug, showDebug, cmdName, fullCmd); err != nil {
+		log.Error("初始化日志失败: %v", err)
+		return 4
+	}
+
+	// 3. 处理版本号显示
 	if showVersion {
 		fmt.Printf("ai %s\n", version)
 		fmt.Println("Author: LingNc")
@@ -97,47 +115,58 @@ func run() int {
 		return 0
 	}
 
-	// 2. 检查配置文件，不存在则自动 Setup
+	// 3.1 空参数检查（仅在无子命令时显示 help）
+	if userInput == "" && subcommand == "" {
+		showHelp()
+		return 0
+	}
+
+	// 4. 检查配置文件，不存在则自动 Setup
 	if !config.Exists() {
 		log.Info("配置文件不存在，正在引导设置...")
 		if err := config.Setup(nil); err != nil {
 			log.Error("设置失败: %v", err)
 			return 4
 		}
-		log.Info("设置完成，正在继续...")
+		if subcommand == "setup" {
+			return 0
+		}
 	}
 
-	// 3. 加载配置
+	// 5. 加载配置
 	cfg, err := config.Load()
 	if err != nil {
 		log.Error("加载配置失败: %v", err)
-		return 4
+		fmt.Fprintf(os.Stderr, "-> 是否进入 setup 修改配置？[Y/n] ")
+		// 单键读取
+		fd := int(os.Stdin.Fd())
+		if term.IsTerminal(fd) {
+			oldState, err := term.MakeRaw(fd)
+			if err == nil {
+				defer term.Restore(fd, oldState)
+				buf := make([]byte, 1)
+				os.Stdin.Read(buf)
+				fmt.Fprintf(os.Stderr, "\r\033[K")
+				if buf[0] == 'n' || buf[0] == 'N' {
+					return 4
+				}
+			}
+		}
+		if err := config.Setup(nil); err != nil {
+			log.Error("设置失败: %v", err)
+			return 4
+		}
+		return 0
 	}
 
-	// 4. 初始化日志系统（配置文件或 CLI 标志均可启用）
-	cwd, _ := os.Getwd()
-	fullCmd := cwd + "/ai " + strings.Join(os.Args[1:], " ")
-	cmdName := "ask"
-	if subcommand != "" {
-		cmdName = subcommand
-	}
-	maxNameLen := cfg.MaxLogNameLen
-	if maxNameLen <= 0 {
-		maxNameLen = 64
-	}
-	if err := log.Init(cfg.Debug || debug, cfg.DebugLogConsole, cfg.DebugLogDir, cmdName, fullCmd, maxNameLen); err != nil {
-		log.Error("初始化日志失败: %v", err)
-		return 4
-	}
-
-	// 5. 验证配置
+	// 6. 验证配置
 	if err := config.Validate(cfg); err != nil {
 		log.Error("配置验证失败，请运行 ai setup: %v", err)
 		return 4
 	}
 
-	// 6. 处理子命令
-	// 6.1 处理 setup 子命令
+	// 7. 处理子命令（setup/shell/log）
+	// 7.1 处理 setup 子命令
 	if subcommand == "setup" {
 		if err := config.Setup(nil); err != nil {
 			log.Error("-> %v", err)
@@ -146,7 +175,7 @@ func run() int {
 		return 0
 	}
 
-	// 6.2 处理 shell 子命令
+	// 7.2 处理 shell 子命令
 	if subcommand == "shell" {
 		switch subAction {
 		case "install":
@@ -160,13 +189,13 @@ func run() int {
 				return 1
 			}
 		default:
-			log.Info("用法: ai shell install | uninstall")
+			log.Info("用法: ai shell [install | uninstall]")
 			return 1
 		}
 		return 0
 	}
 
-	// 6.3 处理 log 子命令
+	// 7.3 处理 log 子命令
 	if subcommand == "log" {
 		logDir := utils.ResolveDir("")
 		if userInput != "" {
@@ -191,22 +220,16 @@ func run() int {
 		return 0
 	}
 
-	// 6.4 空参数优先显示 help
-	if userInput == "" {
-		showHelp()
-		return 0
-	}
-
-	// 7. 创建 LLM 客户端
+	// 8. 创建 LLM 客户端
 	client := llm.New(cfg)
 
-	// 7.1 创建命令解析器
+	// 8.1 创建命令解析器
 	parser := executor.NewParser()
 
-	// 7.2 记录开始时间
+	// 8.2 记录开始时间
 	startTime := time.Now()
 
-	// 8. 流式聊天，使用 goroutine 接收流
+	// 9. 流式聊天，使用 goroutine 接收流
 	// 通过 channel 传递命令结果，避免主 goroutine 与流式 goroutine 之间的数据竞争
 	type cmdReady struct {
 		command  string
@@ -249,7 +272,7 @@ func run() int {
 		streamDone <- err
 	}()
 
-	// 8.1 等待命令完成或流结束
+	// 9.1 等待命令完成或流结束
 	var cmd cmdReady
 	var streamErr error
 	select {
@@ -278,17 +301,17 @@ func run() int {
 		return 3
 	}
 
-	// 9. 调试信息
+	// 10. 调试信息
 	elapsed := time.Since(startTime)
 	log.Debug("分类: %v", finalCategory)
 	log.Debug("耗时: %v", elapsed)
 	log.Debug("命令: %s", finalCommand)
 
-	// 10. 规则引擎分类
+	// 11. 规则引擎分类
 	engine := rules.NewEngine(cfg)
 	verdict := engine.Classify(finalCommand, cfg.Mode, finalCategory)
 
-	// 10.1 根据分类结果处理
+	// 11.1 根据分类结果处理
 	switch verdict {
 	case rules.VerdictForbidden:
 		reason := engine.ForbiddenReason(finalCommand)
@@ -318,24 +341,24 @@ func run() int {
 		// 直接执行，无操作
 	}
 
-	// 11. 执行命令
+	// 12. 执行命令
 	_, exitCode, err := executor.Execute(finalCommand)
 	if err != nil {
 		log.Error("命令执行失败: %v", err)
 		return 1
 	}
 
-	// 11.1 写入临时文件供 shell 集成读取；失败不影响主流程
+	// 12.1 写入临时文件供 shell 集成读取；失败不影响主流程
 	tmpfile := "/tmp/ai-cmd-" + strconv.Itoa(os.Getppid()) + ".txt"
 	os.WriteFile(tmpfile, []byte(finalCommand), 0644)
 
-	// 12. 等待流结束（如果命令先完整，流仍在后台接收 explanation）
+	// 13. 等待流结束（如果命令先完整，流仍在后台接收 explanation）
 	// 若上面 select 已读取过 streamDone，则 streamErr 非 nil，跳过等待
 	if streamErr == nil {
 		<-streamDone
 	}
 
-	// 13. 根据退出码退出
+	// 14. 根据退出码退出
 	if exitCode != 0 {
 		return exitCode
 	}

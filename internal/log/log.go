@@ -20,34 +20,25 @@ var (
 )
 
 // Init 初始化日志系统。
-//   debug: 是否启用调试模式（写入日志文件）
-//   consoleDebug: 调试模式下，debug 级别日志是否同时输出到控制台
-//   logDir: 日志目录，空字符串使用默认值 ~/.aicli/log/
+//   debugFlag: 是否启用调试模式（写入日志文件）
+//   showDebug: 调试模式下，debug 级别日志是否同时输出到控制台
 //   cmdName: 子命令名（如 "main", "setup"），用于日志文件名
 //   fullCmd: 完整命令行，写入日志首行
-//   maxNameLen: 日志文件基础名最大字节数
 // 非 debug 模式不创建文件，行为和当前代码一致（直接写 stderr/stdout）。
-func Init(debug bool, consoleDebug bool, logDir string, cmdName string, fullCmd string, maxNameLen int) error {
-	debugLogConsole = consoleDebug
+func Init(debugFlag bool, showDebug bool, cmdName string, fullCmd string) error {
+	debug = debugFlag
+	debugLogConsole = showDebug
 
 	if !debug {
 		return nil
 	}
 
 	// 解析日志目录
-	if logDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("获取 home 目录失败: %w", err)
-		}
-		logDir = filepath.Join(home, ".aicli", "log")
-	} else if strings.HasPrefix(logDir, "~") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("获取 home 目录失败: %w", err)
-		}
-		logDir = filepath.Join(home, strings.TrimPrefix(logDir, "~"))
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("获取 home 目录失败: %w", err)
 	}
+	logDir := filepath.Join(home, ".aicli", "log")
 
 	if err := os.MkdirAll(logDir, 0700); err != nil {
 		return fmt.Errorf("创建日志目录失败: %w", err)
@@ -55,11 +46,9 @@ func Init(debug bool, consoleDebug bool, logDir string, cmdName string, fullCmd 
 
 	// 构造文件名: ai_YYYY-MM-DD_HH-MM-SS_<cmdName>.log，同名追加 _1, _2
 	ts := time.Now().Format("2006-01-02_15-04-05")
-	if maxNameLen <= 0 {
-		maxNameLen = 64
-	}
+	const maxNameLen = 64
 	const fixedOverhead = 3 + 19 + 1 + 4 // ai_ + timestamp + _ + .log = 27
-	available := max(maxNameLen - fixedOverhead, 1)
+	available := max(maxNameLen-fixedOverhead, 1)
 	cmdPart := truncateToBytes(cmdName, available)
 	baseName := "ai_" + ts + "_" + cmdPart
 	candidate := filepath.Join(logDir, baseName+".log")
