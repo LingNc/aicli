@@ -77,6 +77,9 @@ func fillDefaults(cfg *Config) {
 		if t.Field(i).Name == "ThinkingBody" {
 			continue // 思考模式请求体不自动填充
 		}
+		if t.Field(i).Name == "ThinkingLines" || t.Field(i).Name == "ThinkingLineLen" {
+			continue // 构造器中有默认值回退，避免 0 被覆盖
+		}
 		field := cfgV.Field(i)
 		if field.IsZero() {
 			field.Set(defV.Field(i))

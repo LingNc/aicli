@@ -3,7 +3,6 @@ package display
 import (
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -12,72 +11,117 @@ import (
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
+// ThinkingDisplay 终端思考动画显示
 type ThinkingDisplay struct {
 	startTime  time.Time
 	spinnerIdx int
-	lines      []string
-	maxLines   int
+	lineBufs   [][]rune // 每行是一个 rune 切片，逐字符追加
+	maxLines   int      // 最大显示行数
+	maxLineLen int      // 单行最大字符数
 	drawnLines int
 	active     bool
 	stopCh     chan struct{}
 	mu         sync.Mutex
+	wg         sync.WaitGroup
 }
 
-func NewThinkingDisplay() *ThinkingDisplay {
+// NewThinkingDisplay 创建思考显示组件
+func NewThinkingDisplay(maxLines, maxLineLen int) *ThinkingDisplay {
+	if maxLines <= 0 {
+		maxLines = 3
+	}
+	if maxLineLen <= 0 {
+		maxLineLen = 30
+	}
 	return &ThinkingDisplay{
-		maxLines: 5,
-		stopCh:   make(chan struct{}),
+		maxLines:   maxLines,
+		maxLineLen: maxLineLen,
+		stopCh:     make(chan struct{}),
 	}
 }
 
+// Start 启动 spinner 动画
 func (d *ThinkingDisplay) Start() {
-	if !term.IsTerminal(int(os.Stderr.Fd())) {
+	fd := int(os.Stderr.Fd())
+	if !term.IsTerminal(fd) {
 		return
+	}
+	// 计算有效行宽: min(终端宽度-2缩进, 配置值)
+	if w, _, err := term.GetSize(fd); err == nil && w > 2 {
+		effective := w - 2
+		if effective < d.maxLineLen {
+			d.maxLineLen = effective
+		}
 	}
 	d.startTime = time.Now()
 	d.active = true
+	d.wg.Add(1)
 	go d.spin()
 }
 
+// IsActive 是否正在显示
 func (d *ThinkingDisplay) IsActive() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.active
 }
 
+// FeedReasoning 流式追加推理内容
 func (d *ThinkingDisplay) FeedReasoning(s string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if !d.active {
 		return
 	}
-	// 拆分换行，每行独立存储
-	for line := range strings.SplitSeq(s, "\n") {
-		if line == "" {
+	for _, ch := range s {
+		if ch == '\n' {
+			// 开始新行（不创建空行）
+			if len(d.lineBufs) == 0 || len(d.lineBufs[len(d.lineBufs)-1]) > 0 {
+				d.lineBufs = append(d.lineBufs, nil)
+			}
+			// 如果当前行已经是空的（nil），不再追加
 			continue
 		}
-		d.lines = append(d.lines, line)
+		if len(d.lineBufs) == 0 {
+			d.lineBufs = append(d.lineBufs, nil)
+		}
+		last := &d.lineBufs[len(d.lineBufs)-1]
+		if len(*last) < d.maxLineLen-1 {
+			*last = append(*last, ch)
+		} else if len(*last) == d.maxLineLen-1 {
+			*last = append(*last, '…') // 最后一个位置放省略号表示被截断
+		}
 	}
-	if len(d.lines) > d.maxLines {
-		d.lines = d.lines[len(d.lines)-d.maxLines:]
+	// 滚动：保留最后 maxLines 行
+	if len(d.lineBufs) > d.maxLines {
+		d.lineBufs = d.lineBufs[len(d.lineBufs)-d.maxLines:]
 	}
 }
 
+// Stop 停止并清除显示
 func (d *ThinkingDisplay) Stop() {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	if !d.active {
+		d.mu.Unlock()
 		return
 	}
 	d.active = false
 	close(d.stopCh)
-	// 清除显示区域
-	if d.drawnLines > 0 {
-		fmt.Fprintf(os.Stderr, "\033[%dA\r\033[J", d.drawnLines)
+	drawn := d.drawnLines
+	d.mu.Unlock()
+
+	// 等待 spin goroutine 退出（持锁等待会与 render 的锁死锁）
+	d.wg.Wait()
+
+	d.mu.Lock()
+	if drawn > 0 {
+		fmt.Fprintf(os.Stderr, "\033[%dA\r\033[J", drawn)
 	}
+	d.mu.Unlock()
 }
 
 func (d *ThinkingDisplay) spin() {
+	defer d.wg.Done()
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -104,10 +148,11 @@ func (d *ThinkingDisplay) render() {
 	frame := spinnerFrames[d.spinnerIdx%len(spinnerFrames)]
 	d.spinnerIdx++
 	// 绘制计时器 + spinner
-	fmt.Fprintf(os.Stderr, "\r\033[K-> 思考中[%.1fs] %s\n", elapsed, frame)
+	fmt.Fprintf(os.Stderr, "\r\033[K%s 思考中[%.1fs]\n", frame, elapsed)
 	// 绘制推理内容行
-	for _, line := range d.lines {
-		fmt.Fprintf(os.Stderr, "\r\033[K  %s\n", line)
+	for _, buf := range d.lineBufs {
+		fmt.Fprintf(os.Stderr, "\r\033[K  %s\n", string(buf))
 	}
-	d.drawnLines = 1 + len(d.lines)
+	d.drawnLines = 1 + len(d.lineBufs)
+	// log.Debug("think render: lines=%d drawn=%d maxlen=%d", len(d.lineBufs), d.drawnLines, d.maxLineLen)
 }

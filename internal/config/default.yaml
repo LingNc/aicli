@@ -47,3 +47,7 @@ thinking_body:
   extra_body: {
     "thinking": { "type": "enabled" }
   }
+
+# ──── 思考显示配置 ────
+thinking_lines: 3
+thinking_line_len: 30
