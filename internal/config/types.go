@@ -21,4 +21,7 @@ type Config struct {
 	ThinkingBody      map[string]any `yaml:"thinking_body"`      // 思考模式请求体（--think/-t 时合并到请求体）
 	ThinkingLines     int            `yaml:"thinking_lines"`    // 思考显示最大行数
 	ThinkingLineLen   int            `yaml:"thinking_line_len"` // 单行最大字符数
+	APITimeout        int            `yaml:"api_timeout"`
+	StreamTimeout     int            `yaml:"stream_timeout"`
+	ExecTimeout       int            `yaml:"exec_timeout"`
 }

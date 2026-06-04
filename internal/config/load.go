@@ -80,6 +80,9 @@ func fillDefaults(cfg *Config) {
 		if t.Field(i).Name == "ThinkingLines" || t.Field(i).Name == "ThinkingLineLen" {
 			continue // 构造器中有默认值回退，避免 0 被覆盖
 		}
+		if t.Field(i).Name == "APITimeout" || t.Field(i).Name == "StreamTimeout" || t.Field(i).Name == "ExecTimeout" {
+			continue // 调用处有默认值回退，避免 0 被覆盖
+		}
 		field := cfgV.Field(i)
 		if field.IsZero() {
 			field.Set(defV.Field(i))

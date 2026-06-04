@@ -3,10 +3,12 @@ package llm
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -18,15 +20,34 @@ import (
 
 // Client 是 OpenAI 兼容 API 客户端
 type Client struct {
-	cfg  *config.Config
-	http *http.Client
+	cfg           *config.Config
+	http          *http.Client
+	apiTimeout    time.Duration
+	streamTimeout time.Duration
 }
 
 // New 创建 LLM 客户端
 func New(cfg *config.Config) *Client {
+	apiTimeout := 300
+	if cfg.APITimeout > 0 {
+		apiTimeout = cfg.APITimeout
+	}
+	streamTimeout := 30
+	if cfg.StreamTimeout > 0 {
+		streamTimeout = cfg.StreamTimeout
+	}
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}
 	return &Client{
-		cfg:  cfg,
-		http: &http.Client{Timeout: 60 * time.Second},
+		cfg:           cfg,
+		http:          &http.Client{Transport: transport},
+		apiTimeout:    time.Duration(apiTimeout) * time.Second,
+		streamTimeout: time.Duration(streamTimeout) * time.Second,
 	}
 }
 
@@ -148,6 +169,11 @@ func (c *Client) StreamChat(userInput string, think bool, callback func(chunk st
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
+	// 首字节超时：通过 request context 控制，ctx 超时只影响响应头返回，
+	// 一旦服务端返回响应头，body 流式读取不再受 ctx 限制。
+	ctx, cancel := context.WithTimeout(req.Context(), c.apiTimeout)
+	defer cancel()
+	req = req.WithContext(ctx)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -166,50 +192,83 @@ func (c *Client) StreamChat(userInput string, think bool, callback func(chunk st
 	var lastRaw json.RawMessage
 	scanner := bufio.NewScanner(resp.Body)
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
-			break
-		}
-
-		var cr chatResponse
-		if err := json.Unmarshal([]byte(data), &cr); err != nil {
-			log.Debug("解析 SSE 失败: %v (data: %s)", err, data)
-			continue
-		}
-
-		if len(cr.Choices) > 0 && log.IsDebug() {
-			delta := cr.Choices[0].Delta
-			if delta.Content != "" {
-				contentBuf.WriteString(delta.Content)
-			}
-			if delta.ReasoningContent != "" {
-				reasoningBuf.WriteString(delta.ReasoningContent)
+	type streamChunk struct {
+		line string
+		err  error
+	}
+	chunkCh := make(chan streamChunk, 1)
+	stopCh := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for scanner.Scan() {
+			select {
+			case chunkCh <- streamChunk{line: scanner.Text()}:
+			case <-stopCh:
+				return
 			}
 		}
+		select {
+		case chunkCh <- streamChunk{err: scanner.Err()}:
+		case <-stopCh:
+		}
+	}()
 
-		if len(cr.Choices) > 0 && cr.Choices[0].Delta.Content != "" {
-			chunk := cr.Choices[0].Delta.Content
-			fullContent.WriteString(chunk)
-			callback(chunk)
-		}
-		if len(cr.Choices) > 0 && cr.Choices[0].Delta.ReasoningContent != "" {
-			if reasoningCallback != nil {
-				reasoningCallback(cr.Choices[0].Delta.ReasoningContent)
+streaming:
+	for {
+		select {
+		case chunk, ok := <-chunkCh:
+			if !ok {
+				break streaming
 			}
-		}
-		if log.IsDebug() {
-			lastRaw = json.RawMessage(data)
+			if chunk.err != nil {
+				return nil, fmt.Errorf("读取流式响应失败: %w", chunk.err)
+			}
+			line := chunk.line
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "[DONE]" {
+				break streaming
+			}
+
+			var cr chatResponse
+			if err := json.Unmarshal([]byte(data), &cr); err != nil {
+				log.Debug("解析 SSE 失败: %v (data: %s)", err, data)
+				continue
+			}
+
+			if len(cr.Choices) > 0 && log.IsDebug() {
+				delta := cr.Choices[0].Delta
+				if delta.Content != "" {
+					contentBuf.WriteString(delta.Content)
+				}
+				if delta.ReasoningContent != "" {
+					reasoningBuf.WriteString(delta.ReasoningContent)
+				}
+			}
+
+			if len(cr.Choices) > 0 && cr.Choices[0].Delta.Content != "" {
+				chunkText := cr.Choices[0].Delta.Content
+				fullContent.WriteString(chunkText)
+				callback(chunkText)
+			}
+			if len(cr.Choices) > 0 && cr.Choices[0].Delta.ReasoningContent != "" {
+				if reasoningCallback != nil {
+					reasoningCallback(cr.Choices[0].Delta.ReasoningContent)
+				}
+			}
+			if log.IsDebug() {
+				lastRaw = json.RawMessage(data)
+			}
+		case <-time.After(c.streamTimeout):
+			close(stopCh)
+			return nil, fmt.Errorf("流式响应超时（%v 无数据）", c.streamTimeout)
 		}
 	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("读取流式响应失败: %w", err)
-	}
+	close(stopCh)
+	<-done
 
 	result := &StreamResult{
 		FullContent: fullContent.String(),

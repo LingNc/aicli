@@ -17,7 +17,6 @@ type ThinkingDisplay struct {
 	spinnerIdx int
 	lineBufs   [][]rune // 每行是一个 rune 切片，逐字符追加
 	maxLines   int      // 最大显示行数
-	maxLineLen int      // 单行最大字符数
 	drawnLines int
 	active     bool
 	stopCh     chan struct{}
@@ -26,17 +25,13 @@ type ThinkingDisplay struct {
 }
 
 // NewThinkingDisplay 创建思考显示组件
-func NewThinkingDisplay(maxLines, maxLineLen int) *ThinkingDisplay {
+func NewThinkingDisplay(maxLines int) *ThinkingDisplay {
 	if maxLines <= 0 {
 		maxLines = 3
 	}
-	if maxLineLen <= 0 {
-		maxLineLen = 30
-	}
 	return &ThinkingDisplay{
-		maxLines:   maxLines,
-		maxLineLen: maxLineLen,
-		stopCh:     make(chan struct{}),
+		maxLines: maxLines,
+		stopCh:   make(chan struct{}),
 	}
 }
 
@@ -45,13 +40,6 @@ func (d *ThinkingDisplay) Start() {
 	fd := int(os.Stderr.Fd())
 	if !term.IsTerminal(fd) {
 		return
-	}
-	// 计算有效行宽: min(终端宽度-2缩进, 配置值)
-	if w, _, err := term.GetSize(fd); err == nil && w > 2 {
-		effective := w - 2
-		if effective < d.maxLineLen {
-			d.maxLineLen = effective
-		}
 	}
 	d.startTime = time.Now()
 	d.active = true
@@ -86,11 +74,7 @@ func (d *ThinkingDisplay) FeedReasoning(s string) {
 			d.lineBufs = append(d.lineBufs, nil)
 		}
 		last := &d.lineBufs[len(d.lineBufs)-1]
-		if len(*last) < d.maxLineLen-1 {
-			*last = append(*last, ch)
-		} else if len(*last) == d.maxLineLen-1 {
-			*last = append(*last, '…') // 最后一个位置放省略号表示被截断
-		}
+		*last = append(*last, ch)
 	}
 	// 滚动：保留最后 maxLines 行
 	if len(d.lineBufs) > d.maxLines {

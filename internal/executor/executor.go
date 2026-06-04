@@ -78,8 +78,11 @@ func Confirm(category Category, cfg *config.Config) (bool, bool, error) {
 }
 
 // Execute 执行命令并返回结果
-func Execute(command string) (string, int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func Execute(command string, timeout int) (string, int, error) {
+	if timeout <= 0 {
+		timeout = 30
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
 	log.Debug("执行命令: %s", command)
