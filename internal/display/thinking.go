@@ -167,7 +167,7 @@ func (d *ThinkingDisplay) render() {
 	fmt.Fprintf(os.Stderr, "\r\033[K%s 思考中[%.1fs]\n", frame, elapsed)
 	for i := 0; i < d.maxLines; i++ {
 		if i < len(d.rows) {
-			fmt.Fprintf(os.Stderr, "\r\033[K  %s\n", string(d.rows[i]))
+			fmt.Fprintf(os.Stderr, "\r\033[K\033[38;5;245m  %s\033[0m\n", string(d.rows[i]))
 		} else {
 			fmt.Fprintf(os.Stderr, "\r\033[K\n")
 		}
