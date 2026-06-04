@@ -175,6 +175,11 @@ func ClearStderrLine() {
 	fmt.Fprint(os.Stderr, "\033[2K\r")
 }
 
+// ClearStderrScreen 清除从当前行开始的之后所有内容。仅控制台。
+func ClearStderrScreen() {
+	fmt.Fprint(os.Stderr, "\r\033[J")
+}
+
 // Bell 响铃（\a）。仅控制台，不写日志。
 func Bell() {
 	fmt.Fprint(os.Stderr, "\a")

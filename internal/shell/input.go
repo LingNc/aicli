@@ -53,8 +53,8 @@ func (r *InputReader) QueryCursorPos() (int, int) {
 	select {
 	case pos := <-respCh:
 		return pos[0], pos[1]
-	case <-time.After(50 * time.Millisecond):
-		return 0, 0
+	case <-time.After(120 * time.Millisecond):
+		return -1, -1
 	}
 }
 

@@ -167,7 +167,7 @@ func uninstallBinary() {
 }
 
 // selectInstallScope 在 raw mode 下显示箭头选择界面。
-// 返回: "user" (为自己安装) 或 "system" (为所有人安装)
+// 返回: "user" (为自己安装) 或 "system" (为所有人安装) 或 "cancel" (取消)
 func selectInstallScope() (string, error) {
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
@@ -203,6 +203,7 @@ func selectInstallScope() (string, error) {
 
 	// 隐藏光标
 	fmt.Fprintf(os.Stderr, "\033[?25l")
+	defer fmt.Fprintf(os.Stderr, "\033[?25h")
 
 	reader := NewInputReader()
 	reader.Start()
@@ -218,38 +219,32 @@ func selectInstallScope() (string, error) {
 			case 'A': // 上
 				selected = (selected - 1 + len(options)) % len(options)
 				log.Debug("UP: selected=%d", selected)
-				reader.DebugLog("UP绘制前: selected=%d", selected)
 				drawMenu(options, selected)
-				reader.DebugLog("UP绘制后")
 			case 'B': // 下
 				selected = (selected + 1) % len(options)
 				log.Debug("DOWN: selected=%d", selected)
-				reader.DebugLog("DOWN绘制前: selected=%d", selected)
 				drawMenu(options, selected)
-				reader.DebugLog("DOWN绘制后")
 			}
 		case len(ev.Raw) == 1 && (ev.Raw[0] == '\r' || ev.Raw[0] == '\n'):
-			reader.DebugLog("Enter前: selected=%d", selected)
-			fmt.Fprintf(os.Stderr, "\033[%dA\033[J\033[?25h", len(options))
-			reader.DebugLog("Enter后")
+			// 清屏
+			log.ClearStderrScreen()
 			signal.Stop(sigCh)
 			close(done)
 			term.Restore(fd, oldState)
 			if selected == 2 {
-				return "", fmt.Errorf("-> 取消")
+				return "cancel", nil
 			}
 			if selected == 0 {
 				return "system", nil
 			}
 			return "user", nil
 		case len(ev.Raw) == 1 && (ev.Raw[0] == 'q' || ev.Raw[0] == 0x03):
-			reader.DebugLog("Cancel 前")
-			fmt.Fprintf(os.Stderr, "\033[J\033[?25h")
-			reader.DebugLog("Cancel 后")
+			// 清屏
+			log.ClearStderrScreen()
 			signal.Stop(sigCh)
 			close(done)
 			term.Restore(fd, oldState)
-			return "", fmt.Errorf("用户取消")
+			return "cancel", nil
 		default:
 			log.Bell()
 		}
@@ -276,6 +271,12 @@ func Install() error {
 	scope, err := selectInstallScope()
 	if err != nil {
 		return err
+	}
+
+	// 1.5 用户取消
+	if scope == "cancel" {
+		log.Print("-> 用户取消")
+		return nil
 	}
 
 	// 2. 按选择安装二进制
@@ -321,7 +322,7 @@ func Install() error {
 		return fmt.Errorf("写入 wrapper 失败: %w", err)
 	}
 
-	log.Print("-> 已安装到 %s，请运行 source %s 或重新打开终端", rcPath, rcPath)
+	log.Print("-> 已添加到配置，请重新打开终端或运行 source %s", rcPath)
 	return nil
 }
 
