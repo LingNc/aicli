@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lingnc/aicli/internal/config"
+	"github.com/lingnc/aicli/internal/display"
 	"github.com/lingnc/aicli/internal/executor"
 	"github.com/lingnc/aicli/internal/llm"
 	"github.com/lingnc/aicli/internal/log"
@@ -20,8 +21,8 @@ import (
 var version = "v0.1.1"
 
 // parseArgs 解析命令行参数
-// 返回: debug标志, showDebug标志, 显示版本, 子命令, 子命令动作, 用户输入
-func parseArgs(args []string) (debug bool, showDebug bool, showVersion bool, subcommand string, subAction string, userInput string) {
+// 返回: debug标志, showDebug标志, 显示版本, 思考模式, 子命令, 子命令动作, 用户输入
+func parseArgs(args []string) (debug bool, showDebug bool, showVersion bool, think bool, subcommand string, subAction string, userInput string) {
 	for i, arg := range args {
 		if arg == "-d" || arg == "--debug" {
 			debug = true
@@ -32,6 +33,8 @@ func parseArgs(args []string) (debug bool, showDebug bool, showVersion bool, sub
 		} else if arg == "-h" || arg == "--help" {
 			showHelp()
 			os.Exit(0)
+		} else if arg == "-t" || arg == "--think" {
+			think = true
 		} else if arg == "setup" {
 			subcommand = "setup"
 		} else if arg == "log" {
@@ -75,6 +78,7 @@ func showHelp() {
 	printOption("-v, --version", "显示版本号")
 	printOption("-d, --debug", "启用调试日志")
 	printOption("-sd, --show-debug", "调试信息同时输出到控制台")
+	printOption("-t, --think", "启用思考模式")
 	printOption("-h, --help", "显示帮助信息")
 	fmt.Fprintf(w, "\n示例:\n")
 	fmt.Fprintf(w, "  ai 查看内存\n")
@@ -93,7 +97,7 @@ func main() {
 
 func run() int {
 	// 1. 解析参数
-	debug, showDebug, showVersion, subcommand, subAction, userInput := parseArgs(os.Args[1:])
+	debug, showDebug, showVersion, think, subcommand, subAction, userInput := parseArgs(os.Args[1:])
 
 	// 2. 初始化日志系统（不依赖配置，可尽早启用）
 	cwd, _ := os.Getwd()
@@ -253,35 +257,58 @@ func run() int {
 
 	cmdPrefixShown := false
 	cmdNewlinePrinted := false
+
+	// 思考模式显示
+	var thinkDisplay *display.ThinkingDisplay
+	if think {
+		thinkDisplay = display.NewThinkingDisplay()
+		thinkDisplay.Start()
+	}
+
 	go func() {
-		_, err := client.StreamChat(userInput, func(chunk string) {
-			newCmd := parser.Feed(chunk)
-			if newCmd != "" {
-				newCmd = strings.ReplaceAll(newCmd, "\r", "")
+		_, err := client.StreamChat(userInput, think,
+			func(chunk string) {
+				// 首个 content chunk：清除思考显示
+				if thinkDisplay != nil && thinkDisplay.IsActive() {
+					thinkDisplay.Stop()
+				}
+				newCmd := parser.Feed(chunk)
 				if newCmd != "" {
-					if !cmdPrefixShown {
-						log.PrintRaw("$ " + newCmd)
-						cmdPrefixShown = true
-					} else {
-						log.PrintRaw(newCmd)
+					newCmd = strings.ReplaceAll(newCmd, "\r", "")
+					if newCmd != "" {
+						if !cmdPrefixShown {
+							log.PrintRaw("$ " + newCmd)
+							cmdPrefixShown = true
+						} else {
+							log.PrintRaw(newCmd)
+						}
 					}
 				}
-			}
-			// 命令完成后输出换行（仅一次），避免主 goroutine 输出的换行与流交错
-			if parser.CommandDone() && !cmdNewlinePrinted {
-				log.Print("")
-				cmdNewlinePrinted = true
-			}
-			// 在 callback 内部检查命令是否完成
-			// 如果刚完成，通过 channel 通知主 goroutine（避免主 goroutine 直接读取 parser 字段造成竞争）
-			// 用 len(cmdCh) == 0 避免后续 chunk 重复发送
-			if parser.CommandDone() && len(cmdCh) == 0 {
-				cmdCh <- cmdReady{
-					command:  parser.CurrentCommand,
-					category: parser.CurrentCategory,
+				// 命令完成后输出换行（仅一次），避免主 goroutine 输出的换行与流交错
+				if parser.CommandDone() && !cmdNewlinePrinted {
+					log.Print("")
+					cmdNewlinePrinted = true
 				}
-			}
-		})
+				// 在 callback 内部检查命令是否完成
+				// 如果刚完成，通过 channel 通知主 goroutine（避免主 goroutine 直接读取 parser 字段造成竞争）
+				// 用 len(cmdCh) == 0 避免后续 chunk 重复发送
+				if parser.CommandDone() && len(cmdCh) == 0 {
+					cmdCh <- cmdReady{
+						command:  parser.CurrentCommand,
+						category: parser.CurrentCategory,
+					}
+				}
+			},
+			func(reasoning string) {
+				if thinkDisplay != nil {
+					thinkDisplay.FeedReasoning(reasoning)
+				}
+			},
+		)
+		// 流结束后确保思考显示被清理
+		if thinkDisplay != nil && thinkDisplay.IsActive() {
+			thinkDisplay.Stop()
+		}
 		streamDone <- err
 	}()
 

@@ -61,8 +61,8 @@ type StreamResult struct {
 	Duration    time.Duration
 }
 
-// StreamChat 发送流式请求，对每个 chunk 调用 callback
-func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*StreamResult, error) {
+// StreamChat 发送流式请求，对每个 chunk 调用 callback，对每个 reasoning chunk 调用 reasoningCallback
+func (c *Client) StreamChat(userInput string, think bool, callback func(chunk string), reasoningCallback func(chunk string)) (*StreamResult, error) {
 	start := time.Now()
 
 	url := strings.TrimRight(c.cfg.BaseURL, "/") + "/v1/chat/completions"
@@ -112,6 +112,19 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 	}
 	if eb, ok := c.cfg.RequestBody["extra_body"].(map[string]any); ok {
 		maps.Copy(bodyMap, eb)
+	}
+
+	// 合并 thinking_body（启用思考模式时）
+	if think && len(c.cfg.ThinkingBody) > 0 {
+		for k, v := range c.cfg.ThinkingBody {
+			if k == "extra_body" {
+				continue
+			}
+			bodyMap[k] = v
+		}
+		if eb, ok := c.cfg.ThinkingBody["extra_body"].(map[string]any); ok {
+			maps.Copy(bodyMap, eb)
+		}
 	}
 
 	body, err := json.Marshal(bodyMap)
@@ -183,6 +196,11 @@ func (c *Client) StreamChat(userInput string, callback func(chunk string)) (*Str
 			chunk := cr.Choices[0].Delta.Content
 			fullContent.WriteString(chunk)
 			callback(chunk)
+		}
+		if len(cr.Choices) > 0 && cr.Choices[0].Delta.ReasoningContent != "" {
+			if reasoningCallback != nil {
+				reasoningCallback(cr.Choices[0].Delta.ReasoningContent)
+			}
 		}
 		if log.IsDebug() {
 			lastRaw = json.RawMessage(data)

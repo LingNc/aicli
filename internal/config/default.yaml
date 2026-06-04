@@ -1,5 +1,5 @@
 # ──── aicli 默认配置 ────
-config_version: 1
+config_version: 1.1
 api_key: ""
 base_url: "https://api.openai.com"
 model: "gpt-4o"
@@ -28,7 +28,7 @@ dangerous_patterns:
 
 # ──── 请求体参数（直接合并到 API 请求 JSON）────
 # temperature / max_tokens 为标准参数
-# 其他参数按提供商需求添加，例如：
+# 关闭思考模式参数按提供商需求添加，例如：
 #   thinking: {"type": "disabled"}         # Anthropic/OpenAI 风格
 #   enable_thinking: false                 # 某些提供商
 #   extra_body: {"thinking": {"type": "disabled"}}
@@ -39,4 +39,11 @@ request_body:
 
   extra_body: {
     "thinking": { "type": "disabled" }
+  }
+
+# ──── 思考模式请求体（--think/-t 时合并到请求体，覆盖 request_body 中同名字段）────
+# 不同提供商的配置不同
+thinking_body:
+  extra_body: {
+    "thinking": { "type": "enabled" }
   }
