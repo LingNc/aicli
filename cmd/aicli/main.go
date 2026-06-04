@@ -261,7 +261,7 @@ func run() int {
 	// 思考模式显示
 	var thinkDisplay *display.ThinkingDisplay
 	if think {
-		thinkDisplay = display.NewThinkingDisplay(cfg.ThinkingLines)
+		thinkDisplay = display.NewThinkingDisplay(cfg.ThinkingLines, cfg.ThinkingLineLen)
 		thinkDisplay.Start()
 	}
 
