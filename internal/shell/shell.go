@@ -27,7 +27,8 @@ ai() {
         rm -f "$tmpfile"
         if [ -n "$cmd" ]; then
             history -a
-            history -s "$cmd"
+            echo "$cmd" >> "${HISTFILE:-$HOME/.bash_history}"
+            history -n
         fi
     fi
     return $rc
@@ -46,7 +47,8 @@ ai() {
         rm -f "$tmpfile"
         if [ -n "$cmd" ]; then
             history -a
-            history -s "$cmd"
+            echo "$cmd" >> "${HISTFILE:-$HOME/.bash_history}"
+            history -n
         fi
     fi
     return $rc
