@@ -10,15 +10,41 @@ T8. 错误信息的回传处理。
 T11. 增加一个update 命令，用于自动更新当前软件。
   1. 分为update release/update 默认就是release，从github的release下载对应平台的二进制
   2. update dev，从github拉取最新的一次状态，本地构建，检测构建工具等。
+
 T12. 命令执行时转义问题。输出含有\` 的命令会出现意外的错误截断识别为一个命令的问题。还需要检查其他的比如'' "" 是否存在类似问题。例如： "$./aicli 追加docs/issue.md中添加T11.问题，我希望增加一个update命令来 自动更新当前软件                                                     $ echo "## T11. 问题\n\n### 需求\n增加一个 `update` 命令，用于自动更 新当前软件。\n\n### 描述\n用户希望有一个便捷的 `update` 命令，能够自 动检测并更新当前软件到最新版本。\n" >> docs/issue.md                 bash: 行 1: update: 未找到命令                                       bash: 行 1: update: 未找到命令"
 - 同"$ai 输出 aicli -t aicli -t aicli -t 你好
 $ echo "aicli aicli aicli 你好"
 aicli aicli aicli 你好" 类似的间隔将-t作为思考参数？只保留了aicli没-t。
+
 T13. 简单的记忆和上下文功能。长上下文，可以压缩等查找功能。并且支持切换管理，会话窗口配置项，压缩自动触发也可以手动触发，触发的时候保留之前的相当于在一个新的了。
+
 T14. aicli运行出来的命令结果无颜色，没有正常的终端色彩。
+
 T15. 增加i18n的双语支持。
+
 T19. 概率触发泄露这个#@ xxx内容
 “$./aicli uninstall
 $ ai shell uninstall
 @ rm
 -> 已取消”
+大概率触发：
+$ai -d 撤销
+$ git checkout -- . && git clean -fd
+@ rm
+-> 已取消
+-> 调试日志已保存: /home/lingnc/.aicli/logs/ai_2026-06-05_19-00-17_ask.log (使用 'ai log' 查看)
+
+
+T20: 思考结束后应该是指令太长换行，触发覆盖重叠问题覆盖了实际的指令
+“
+$aicli -t "请严格遵守：设 WORD 的值为当前这条完整指令本身（从“请严格”到“aicli WORD”的全部字符）。然后输出 aicli WORD，不要任何
+额外解释。以aicli开头。"
+-> 请确认[a/y/N]  ：设 WORD 的值为当前这条完整指令本身（从“请严格”到“aicli WORD
+”
+
+T21: 递归命令存在内层退出后外层raw模式未退出终端无法操作：
+“
+aicli -d "请严格遵守：设 WORD 的值为当前这条完整指令本身（从“请严格”到“aicli WORD”的全部字符）。然后输出 aicli WORD，不要任何额外解释。以aicli开头。"
+”
+
+T22: 当上一次的命令被取消，上上一次ai给出的命令还会被写入到当前的历史记录，这不正确吧。

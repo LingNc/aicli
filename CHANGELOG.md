@@ -8,16 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [v0.1.3] - 2026-06-05
 
 ### Added
-- 思考模式 `--think` / `-t` 参数，流式滚动显示 AI 思考过程
-- ThinkingDisplay v2 — 固定行缓冲区，手动宽度控制，不依赖终端自动换行
-- 增加超时配置，优化命令执行和流式请求处理
+- 思考模式 `--think` / `-t` — ThinkingDisplay v2，流式滚动显示 AI 思考过程
+- 系统级安装/卸载 — `shell install` 支持系统范围（`/usr/local/bin/` + `/etc/profile.d/aicli.sh`）
+- shell install wrapper 自动更新 — 已存在时比较内容，不同时自动更新，标记损坏自愈
+- 保留用户原始提示到 shell history — wrapper 中 `history -a` + `history -s`
 - 清除控制台后续内容功能，优化用户交互体验
-- 优化思考显示的行宽和颜色设置
+- GitHub Actions 发布工作流 — tag 推送自动编译并创建 Release
 
 ### Changed
-- 统一输入读取器 InputReader，解决 DSR/stdin 竞争问题，非 debug 零开销
-- 配置版本类型调整为字符串，优化版本比较逻辑
-- 思考模式和回答模式的命令解析优化
+- 思考显示宽度自动适配终端宽度（`thinking_line_len: 0` 表示终端同宽）
+- 配置系统清理 — 超时/显示参数改为 `*int` 指针类型，`default.yaml` 成为唯一默认值源
+- 配置版本比较支持多段版本号（`1.12 > 1.11`），版本类型改为字符串
+- 日志查看改用 `less -R` 替代 vi，保留 ANSI 颜色
+- 统一输入读取器 InputReader，解决 DSR/stdin 竞争，非 debug 零开销
+
+### Fixed
+- 思考过程流式输出空白区域 — `render()` 只输出有内容的行，动态控制输出行数
+- wrapper 中 `history -a` 未正确追加用户 ai 命令
 
 ## [v0.1.2] - 2026-06-01
 
