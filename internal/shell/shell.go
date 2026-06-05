@@ -26,6 +26,26 @@ ai() {
         cmd=$(cat "$tmpfile")
         rm -f "$tmpfile"
         if [ -n "$cmd" ]; then
+            history -a
+            history -s "$cmd"
+        fi
+    fi
+    return $rc
+}
+# <<< ai shell integration <<<`
+
+// systemWrapper 为系统级安装写入 /etc/profile.d/ 的 wrapper
+const systemWrapper = `# >>> ai shell integration >>>
+ai() {
+    local tmpfile="/tmp/ai-cmd-$$.txt"
+    command aicli "$@"
+    local rc=$?
+    if [ -f "$tmpfile" ]; then
+        local cmd
+        cmd=$(cat "$tmpfile")
+        rm -f "$tmpfile"
+        if [ -n "$cmd" ]; then
+            history -a
             history -s "$cmd"
         fi
     fi
@@ -154,6 +174,47 @@ func installSystem() error {
 	return nil
 }
 
+// installSystemProfile 使用 sudo 写入 /etc/profile.d/aicli.sh
+func installSystemProfile() error {
+	profilePath := "/etc/profile.d/aicli.sh"
+
+	// 检查是否已存在
+	cmd := exec.Command("sudo", "test", "-f", profilePath)
+	if cmd.Run() == nil {
+		// 文件存在，检查内容是否需要更新
+		log.Print("-> /etc/profile.d/aicli.sh 已存在")
+		return nil
+	}
+
+	// 写入临时文件再 sudo 移动
+	tmpFile, err := os.CreateTemp("", "aicli-profile-")
+	if err != nil {
+		return fmt.Errorf("创建临时文件失败: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmpFile.WriteString(systemWrapper + "\n"); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("写入临时文件失败: %w", err)
+	}
+	tmpFile.Close()
+
+	mv := exec.Command("sudo", "mv", tmpPath, profilePath)
+	mv.Stdin = os.Stdin
+	mv.Stdout = os.Stdout
+	mv.Stderr = os.Stderr
+	if err := mv.Run(); err != nil {
+		return fmt.Errorf("移动到 %s 失败: %w", profilePath, err)
+	}
+
+	chmod := exec.Command("sudo", "chmod", "0644", profilePath)
+	chmod.Run()
+
+	log.Print("-> 已写入 %s", profilePath)
+	return nil
+}
+
 // uninstallBinary 从安装目录移除二进制
 func uninstallBinary() {
 	home, err := os.UserHomeDir()
@@ -163,6 +224,23 @@ func uninstallBinary() {
 	dst := filepath.Join(home, ".local", "bin", "aicli")
 	if err := os.Remove(dst); err == nil {
 		log.Print("-> 已移除 %s", dst)
+	}
+}
+
+// uninstallSystem 使用 sudo 卸载系统级安装
+func uninstallSystem() {
+	// 移除二进制
+	dst := "/usr/local/bin/aicli"
+	cmd := exec.Command("sudo", "rm", "-f", dst)
+	if err := cmd.Run(); err == nil {
+		log.Print("-> 已移除 %s", dst)
+	}
+
+	// 移除 profile.d 脚本
+	profilePath := "/etc/profile.d/aicli.sh"
+	cmd = exec.Command("sudo", "rm", "-f", profilePath)
+	if err := cmd.Run(); err == nil {
+		log.Print("-> 已移除 %s", profilePath)
 	}
 }
 
@@ -252,6 +330,85 @@ func selectInstallScope() (string, error) {
 	return "user", nil
 }
 
+// selectUninstallScope 在 raw mode 下显示卸载范围选择界面。
+// 返回: "user" 或 "system" 或 "cancel"
+func selectUninstallScope() (string, error) {
+	fd := int(os.Stdin.Fd())
+	if !term.IsTerminal(fd) {
+		return "user", nil
+	}
+
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		return "user", nil
+	}
+
+	done := make(chan struct{})
+	sigCh := make(chan os.Signal, 1)
+	go func() {
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		select {
+		case <-sigCh:
+			fmt.Fprintf(os.Stderr, "\033[?25h")
+			term.Restore(fd, oldState)
+			fmt.Fprintf(os.Stderr, "\r\033[K")
+			os.Exit(130)
+		case <-done:
+		}
+	}()
+
+	options := []string{
+		"为所有人卸载 (root)",
+		"为自己卸载",
+		"取消 [q]",
+	}
+	selected := 0
+
+	fmt.Fprintf(os.Stderr, "\033[?25l")
+	defer fmt.Fprintf(os.Stderr, "\033[?25h")
+
+	reader := NewInputReader()
+	reader.Start()
+	defer reader.Stop()
+
+	drawMenu(options, selected)
+
+	for ev := range reader.Keys() {
+		switch {
+		case len(ev.Raw) >= 3 && ev.Raw[0] == 0x1b && ev.Raw[1] == '[':
+			switch ev.Raw[2] {
+			case 'A':
+				selected = (selected - 1 + len(options)) % len(options)
+				drawMenu(options, selected)
+			case 'B':
+				selected = (selected + 1) % len(options)
+				drawMenu(options, selected)
+			}
+		case len(ev.Raw) == 1 && (ev.Raw[0] == '\r' || ev.Raw[0] == '\n'):
+			log.ClearStderrScreen()
+			signal.Stop(sigCh)
+			close(done)
+			term.Restore(fd, oldState)
+			if selected == 2 {
+				return "cancel", nil
+			}
+			if selected == 0 {
+				return "system", nil
+			}
+			return "user", nil
+		case len(ev.Raw) == 1 && (ev.Raw[0] == 'q' || ev.Raw[0] == 0x03):
+			log.ClearStderrScreen()
+			signal.Stop(sigCh)
+			close(done)
+			term.Restore(fd, oldState)
+			return "cancel", nil
+		default:
+			log.Bell()
+		}
+	}
+	return "user", nil
+}
+
 // drawMenu 绘制选择菜单
 func drawMenu(options []string, selected int) {
 	log.Debug("drawMenu: selected=%d/%d", selected, len(options))
@@ -284,6 +441,11 @@ func Install() error {
 		if err := installSystem(); err != nil {
 			return err
 		}
+		if err := installSystemProfile(); err != nil {
+			return err
+		}
+		log.Print("-> 安装完成，请重新打开终端或运行 source /etc/profile.d/aicli.sh")
+		return nil
 	} else {
 		installDir, err := resolveInstallDir()
 		if err != nil {
@@ -328,6 +490,21 @@ func Install() error {
 
 // Uninstall 从 shell rc 文件中移除 wrapper 并卸载二进制
 func Uninstall() error {
+	scope, err := selectUninstallScope()
+	if err != nil {
+		return err
+	}
+	if scope == "cancel" {
+		log.Print("-> 用户取消")
+		return nil
+	}
+
+	if scope == "system" {
+		uninstallSystem()
+		return nil
+	}
+
+	// user scope — 移除当前用户的 .bashrc wrapper
 	shell := detectShell()
 	rcPath, err := rcFilePath(shell)
 	if err != nil {
