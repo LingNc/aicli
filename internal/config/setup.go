@@ -11,13 +11,13 @@ import (
 )
 
 // promptConfigUpdate 配置版本不匹配时提示用户是否更新
-func promptConfigUpdate(configPath string, userVer, defVer int) bool {
+func promptConfigUpdate(configPath string, userVer, defVer string) bool {
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
 		return false
 	}
 
-	fmt.Fprintf(os.Stderr, "-> 配置文件版本过旧 (v%d -> v%d)，是否更新？[y/N] ", userVer, defVer)
+	fmt.Fprintf(os.Stderr, "-> 配置文件版本过旧 (v%s -> v%s)，是否更新？[y/N] ", userVer, defVer)
 
 	oldState, err := term.MakeRaw(fd)
 	if err != nil {

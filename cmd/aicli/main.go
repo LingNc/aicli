@@ -18,7 +18,7 @@ import (
 	"golang.org/x/term"
 )
 
-var version = "v0.1.1"
+var version = "v0.1.3"
 
 // parseArgs 解析命令行参数
 // 返回: debug标志, showDebug标志, 显示版本, 思考模式, 子命令, 子命令动作, 用户输入
@@ -149,6 +149,7 @@ func run() int {
 		log.Error("加载配置失败: %v", err)
 		return 4
 	}
+	log.Debug("配置版本: v%s", cfg.ConfigVersion)
 
 	// 6. 验证配置
 	if err := config.Validate(cfg); err != nil {

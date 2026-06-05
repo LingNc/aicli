@@ -31,8 +31,8 @@ func Load() (*Config, error) {
 	}
 
 	// 版本过旧提示，不自动迁移、不打开编辑器
-	if cfg.ConfigVersion >= 0 && cfg.ConfigVersion < defaultConfigVersion() {
-		log.Warn("配置文件版本过旧(v%d)，请在 'setup' 更新", cfg.ConfigVersion)
+	if cfg.ConfigVersion != "" && compareVersions(cfg.ConfigVersion, defaultConfigVersion()) < 0 {
+		log.Warn("配置文件版本过旧(v%s)，请在 'setup' 更新", cfg.ConfigVersion)
 	}
 
 	// 填充默认值（处理 struct 级零值，如 RequestBody nil）
@@ -41,10 +41,10 @@ func Load() (*Config, error) {
 }
 
 // defaultConfigVersion 返回嵌入的 default.yaml 中的 config_version
-func defaultConfigVersion() int {
+func defaultConfigVersion() string {
 	var cfg Config
 	if err := yaml.Unmarshal(defaultYAML, &cfg); err != nil {
-		return 0
+		return "0"
 	}
 	return cfg.ConfigVersion
 }

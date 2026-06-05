@@ -9,7 +9,7 @@ var defaultYAML []byte
 
 // Config 是应用配置结构体
 type Config struct {
-	ConfigVersion     int            `yaml:"config_version"`
+	ConfigVersion     string         `yaml:"config_version"`
 	APIKey            string         `yaml:"api_key"`
 	BaseURL           string         `yaml:"base_url"`
 	Model             string         `yaml:"model"`

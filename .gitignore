@@ -16,3 +16,6 @@ temp/
 *.exe
 *.test
 *.out
+
+# LICENSE
+!LICENSE

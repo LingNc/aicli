@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/lingnc/aicli/internal/log"
@@ -20,7 +21,7 @@ func checkAndMigrateConfig(configPath string, data []byte) ([]byte, error) {
 	var defCfg Config
 	// 解析嵌入的 defaultYAML（编译时常量，解析必定成功）
 	yaml.Unmarshal(defaultYAML, &defCfg)
-	if userCfg.ConfigVersion >= defCfg.ConfigVersion {
+	if compareVersions(userCfg.ConfigVersion, defCfg.ConfigVersion) >= 0 {
 		return data, nil
 	}
 
@@ -215,4 +216,29 @@ func isYAMLKeyword(s string) bool {
 		return true
 	}
 	return false
+}
+
+// compareVersions 比较两个语义版本号（如 "1.12" > "1.11"）。
+// 返回 -1、0、1。
+func compareVersions(v1, v2 string) int {
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+	maxLen := max(len(parts2), len(parts1))
+	for i := range maxLen {
+		n1 := 0
+		if i < len(parts1) {
+			n1, _ = strconv.Atoi(parts1[i])
+		}
+		n2 := 0
+		if i < len(parts2) {
+			n2, _ = strconv.Atoi(parts2[i])
+		}
+		if n1 < n2 {
+			return -1
+		}
+		if n1 > n2 {
+			return 1
+		}
+	}
+	return 0
 }
