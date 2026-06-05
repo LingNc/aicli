@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v0.1.4] - 2026-06-05
+
+### Fixed
+- T2: 配置迁移保留用户 slice 和嵌套 map 数据 — whitelist/forbidden_patterns/thinking_body 不再丢失
+- T5: shell history 保留用户原始提示 — `history -a` + `echo >> HISTFILE` + `history -n` 替代会删除条目的 `history -s`
+<!-- - T14: 命令输出颜色 — `bash -l -c` 继承用户环境变量（LS_COLORS 等） -->
+- T22: 失败命令不再写入 shell history — tmpfile 仅在 exitCode==0 时写入
+
+### Changed
+- 更新用户输入内容为user(用户输入内容)
+
 ## [v0.1.3] - 2026-06-05
 
 ### Added

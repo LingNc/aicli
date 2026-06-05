@@ -84,7 +84,7 @@ func Execute(command string, timeout int) (string, int, error) {
 
 	log.Debug("执行命令: %s", command)
 
-	cmd := exec.CommandContext(ctx, "bash", "-c", command)
+	cmd := exec.CommandContext(ctx, "bash", "-l", "-c", command)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin

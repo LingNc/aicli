@@ -43,7 +43,7 @@ func checkAndMigrateConfig(configPath string, data []byte) ([]byte, error) {
 
 // migrateConfigFile 以 default.yaml 为模板合并用户已有值。
 // 保留模板的注释、结构和顺序，只替换用户已有的简单键值。
-// 复杂字段（slice、嵌套 map）和 request_body 保留模板默认值，用户可在编辑器中手动修改。
+// slice、嵌套 map 也会替换为用户值；request_body 仍保留模板默认值。
 func migrateConfigFile(configPath string, userData []byte) error {
 	// 1. 备份原文件
 	backupPath := configPath + ".bak"
@@ -136,11 +136,41 @@ func migrateConfigFile(configPath string, userData []byte) error {
 		if !exists {
 			continue
 		}
-		if _, isSlice := userVal.([]any); isSlice {
-			continue // slice 保留模板默认值
+		if s, isSlice := userVal.([]any); isSlice {
+			// 用户有此 slice 字段，替换模板值
+			indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+			comment := ""
+			ci := strings.Index(trimmed, " #")
+			if ci > idx {
+				comment = trimmed[ci:]
+			}
+			if len(s) == 0 {
+				lines[i] = indent + key + ": []" + comment
+			} else {
+				lines[i] = indent + key + ":"
+				for _, item := range s {
+					lines = append(lines[:i+1], append([]string{indent + "  - " + formatYAMLScalar(item)}, lines[i+1:]...)...)
+					i++
+				}
+			}
+			replaced[key] = true
+			continue
 		}
-		if _, isMap := userVal.(map[string]any); isMap {
-			continue // 嵌套 map 保留模板默认值
+		if m, isMap := userVal.(map[string]any); isMap {
+			// 用户有此嵌套 map 字段，替换模板值
+			indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+			comment := ""
+			ci := strings.Index(trimmed, " #")
+			if ci > idx {
+				comment = trimmed[ci:]
+			}
+			lines[i] = indent + key + ":" + comment
+			for subKey, subVal := range m {
+				i++
+				lines = append(lines[:i], append([]string{indent + "  " + subKey + ": " + formatYAMLScalar(subVal)}, lines[i:]...)...)
+			}
+			replaced[key] = true
+			continue
 		}
 
 		// 替换值（保留缩进和 key）

@@ -44,3 +44,17 @@ T18. shell install 更新已存在的 wrapper ✅
   - 系统安装：sudo cat 读取 /etc/profile.d/aicli.sh，不同时 writeSystemProfile() 更新
   - 新增 writeSystemProfile() 辅助函数，提取 temp file + sudo mv + chmod 逻辑
   - 标记损坏（有开始无结束）当作不存在，fall through 到追加逻辑自愈
+
+T2. 配置迁移保留用户数据 ✅
+  - migrateConfigFile 中 slice 字段（whitelist/forbidden_patterns）不再跳过，替换为用户的 YAML 值
+  - 嵌套 map 字段（thinking_body）同样替换为用户的子键值
+  - 保留模板的缩进和行内注释
+  - replaced[key] 标记防止 extra user keys 段重复输出
+
+T14.[必须使用交互式终端才可以 -> T26] 命令输出无颜色。暂时搁置等待T26作为替代
+  - Execute() 从 bash -c 改为 bash -l -c（login shell）
+  - login shell 继承用户环境：LS_COLORS、PATH、alias 等
+
+T22. 失败命令不应写入历史记录 ✅
+  - tmpfile 写入前检查 exitCode == 0，非零退出码不写入
+  - 防止执行失败或被中断的命令进入 shell history

@@ -106,7 +106,7 @@ func (c *Client) StreamChat(userInput string, think bool, callback func(chunk st
 		Messages: []message{
 			{Role: "system", Content: prompt.System},
 			{Role: "user", Content: fmt.Sprintf("#( %s #)", prompt.BuildSystemInfo())},
-			{Role: "user", Content: fmt.Sprintf("#( %s #)\n%s", time.Now().Format("2006-01-02 15:04:05"), userInput)},
+			{Role: "user", Content: fmt.Sprintf("#( %s #)\nuser(%s)", time.Now().Format("2006-01-02 15:04:05"), userInput)},
 		},
 		Stream:      true,
 		Temperature: temp,

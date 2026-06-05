@@ -18,7 +18,7 @@ import (
 	"golang.org/x/term"
 )
 
-var version = "v0.1.3"
+var version = "v0.1.4-dev"
 
 // parseArgs 解析命令行参数
 // 返回: debug标志, showDebug标志, 显示版本, 思考模式, 子命令, 子命令动作, 用户输入
@@ -391,9 +391,11 @@ func run() int {
 	}
 
 	// 12.1 写入临时文件供 shell 集成读取；失败不影响主流程
-	tmpfile := "/tmp/ai-cmd-" + strconv.Itoa(os.Getppid()) + ".txt"
-	os.WriteFile(tmpfile, []byte(finalCommand), 0644)
-	log.Debug("写入临时文件: %s", tmpfile)
+	if exitCode == 0 {
+		tmpfile := "/tmp/ai-cmd-" + strconv.Itoa(os.Getppid()) + ".txt"
+		os.WriteFile(tmpfile, []byte(finalCommand), 0644)
+		log.Debug("写入临时文件: %s", tmpfile)
+	}
 
 	// 13. 等待流结束（如果命令先完整，流仍在后台接收 explanation）
 	// 若上面 select 已读取过 streamDone，则 streamErr 非 nil，跳过等待
