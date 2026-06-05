@@ -35,7 +35,7 @@ func NewThinkingDisplay(maxLines, maxLineLen int) *ThinkingDisplay {
 	if maxLines <= 0 {
 		maxLines = 3
 	}
-	if maxLineLen <= 0 {
+	if maxLineLen < 0 {
 		maxLineLen = 30
 	}
 	return &ThinkingDisplay{
@@ -55,9 +55,12 @@ func (d *ThinkingDisplay) Start() {
 	if d.termWidth <= 0 {
 		d.termWidth = 80
 	}
-	d.effWidth = d.termWidth
+	d.effWidth = d.termWidth - 2  // leave room for "  " indent prefix in render()
 	if d.maxLineLen > 0 && d.maxLineLen < d.effWidth {
 		d.effWidth = d.maxLineLen
+	}
+	if d.effWidth < 1 {
+		d.effWidth = 1
 	}
 	d.startTime = time.Now()
 	d.active = true

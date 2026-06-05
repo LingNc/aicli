@@ -50,7 +50,7 @@ thinking_body:
 
 # ──── 思考显示配置 ────
 thinking_lines: 3
-thinking_line_len: 80
+thinking_line_len: 0
 
 # ──── 超时配置（秒）────
 api_timeout: 300        # 首字节超时（发请求到收到第一个 chunk，排队场景需要较长时间）

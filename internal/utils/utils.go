@@ -38,25 +38,11 @@ func ResolveDir(logDir string) string {
 	return logDir
 }
 
-// OpenReadOnly 用编辑器以只读模式打开文件
+// OpenReadOnly 用 less 以只读模式打开文件（-R 保留 ANSI 颜色）
 func OpenReadOnly(path string) {
-	editor := GetEditor()
-	cmd := exec.Command(editor, ReadOnlyArgs(editor, path)...)
+	cmd := exec.Command("less", "-R", path)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Run()
-}
-
-// ReadOnlyArgs 返回编辑器的只读模式参数
-func ReadOnlyArgs(editor, path string) []string {
-	base := filepath.Base(editor)
-	switch base {
-	case "vim", "vi", "nvim", "gvim":
-		return []string{"-R", path}
-	case "nano":
-		return []string{"-v", path}
-	default:
-		return []string{path}
-	}
 }
