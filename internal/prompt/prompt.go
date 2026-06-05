@@ -35,9 +35,9 @@ func BuildSystemInfo() string {
 	if runtime.GOOS == "linux" {
 		// 尝试读取 /etc/os-release 获取发行版名
 		if data, err := os.ReadFile("/etc/os-release"); err == nil {
-			for _, line := range strings.Split(string(data), "\n") {
-				if strings.HasPrefix(line, "PRETTY_NAME=") {
-					osName = strings.Trim(strings.TrimPrefix(line, "PRETTY_NAME="), "\"")
+			for line := range strings.SplitSeq(string(data), "\n") {
+				if after, ok :=strings.CutPrefix(line, "PRETTY_NAME="); ok  {
+					osName = strings.Trim(after, "\"")
 					break
 				}
 			}

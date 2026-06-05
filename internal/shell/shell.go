@@ -118,6 +118,60 @@ func checkPath(dir string) bool {
 	return false
 }
 
+// replaceWrapper 检查 content 中的 wrapper 内容是否需要更新。
+// 如果标记不存在，返回 (content, false) —— 调用方应追加 wrapper。
+// 如果标记存在且内容已是最新的，返回 (content, true)。
+// 如果标记存在但内容过期，返回 (newContent, true)，其中旧 wrapper 已替换。
+func replaceWrapper(content, newWrapper string) (string, bool) {
+	start := strings.Index(content, installMarker)
+	if start == -1 {
+		return content, false
+	}
+	end := strings.Index(content[start:], uninstallMarker)
+	if end == -1 {
+		return content, false
+	}
+	end += start
+
+	oldBlock := strings.TrimSpace(content[start : end+len(uninstallMarker)])
+	if oldBlock == strings.TrimSpace(newWrapper) {
+		return content, true
+	}
+
+	prefix := content[:start]
+	suffix := content[end+len(uninstallMarker):]
+	return prefix + newWrapper + "\n" + suffix, true
+}
+
+// writeSystemProfile 使用 sudo 将内容写入 /etc/profile.d/aicli.sh
+func writeSystemProfile(profilePath, content string) error {
+	tmpFile, err := os.CreateTemp("", "aicli-profile-")
+	if err != nil {
+		return fmt.Errorf("创建临时文件失败: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmpFile.WriteString(content); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("写入临时文件失败: %w", err)
+	}
+	tmpFile.Close()
+
+	mv := exec.Command("sudo", "mv", tmpPath, profilePath)
+	mv.Stdin = os.Stdin
+	mv.Stdout = os.Stdout
+	mv.Stderr = os.Stderr
+	if err := mv.Run(); err != nil {
+		return fmt.Errorf("移动到 %s 失败: %w", profilePath, err)
+	}
+
+	chmod := exec.Command("sudo", "chmod", "0644", profilePath)
+	chmod.Run()
+
+	return nil
+}
+
 // installBinary 将当前二进制复制到目标目录
 func installBinary(dstDir string) error {
 	src, err := findSelf()
@@ -179,38 +233,26 @@ func installSystemProfile() error {
 	profilePath := "/etc/profile.d/aicli.sh"
 
 	// 检查是否已存在
-	cmd := exec.Command("sudo", "test", "-f", profilePath)
-	if cmd.Run() == nil {
-		// 文件存在，检查内容是否需要更新
-		log.Print("-> /etc/profile.d/aicli.sh 已存在")
-		return nil
+	readCmd := exec.Command("sudo", "cat", profilePath)
+	existing, err := readCmd.Output()
+	if err == nil {
+		newContent, found := replaceWrapper(string(existing), systemWrapper)
+		if found {
+			if newContent == string(existing) {
+				log.Print("-> /etc/profile.d/aicli.sh 已存在")
+				return nil
+			}
+			if err := writeSystemProfile(profilePath, newContent); err != nil {
+				return err
+			}
+			log.Print("-> 已更新 %s", profilePath)
+			return nil
+		}
 	}
 
-	// 写入临时文件再 sudo 移动
-	tmpFile, err := os.CreateTemp("", "aicli-profile-")
-	if err != nil {
-		return fmt.Errorf("创建临时文件失败: %w", err)
+	if err := writeSystemProfile(profilePath, systemWrapper+"\n"); err != nil {
+		return err
 	}
-	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := tmpFile.WriteString(systemWrapper + "\n"); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("写入临时文件失败: %w", err)
-	}
-	tmpFile.Close()
-
-	mv := exec.Command("sudo", "mv", tmpPath, profilePath)
-	mv.Stdin = os.Stdin
-	mv.Stdout = os.Stdout
-	mv.Stderr = os.Stderr
-	if err := mv.Run(); err != nil {
-		return fmt.Errorf("移动到 %s 失败: %w", profilePath, err)
-	}
-
-	chmod := exec.Command("sudo", "chmod", "0644", profilePath)
-	chmod.Run()
-
 	log.Print("-> 已写入 %s", profilePath)
 	return nil
 }
@@ -469,8 +511,16 @@ func Install() error {
 	}
 
 	content := string(data)
-	if strings.Contains(content, installMarker) {
-		log.Print("-> wrapper 已存在于 %s", rcPath)
+	newContent, found := replaceWrapper(content, wrapper)
+	if found {
+		if newContent == content {
+			log.Print("-> wrapper 已存在于 %s", rcPath)
+			return nil
+		}
+		if err := os.WriteFile(rcPath, []byte(newContent), 0600); err != nil {
+			return fmt.Errorf("更新 wrapper 失败: %w", err)
+		}
+		log.Print("-> 已更新 %s 中的 wrapper，请重新打开终端或运行 source %s", rcPath, rcPath)
 		return nil
 	}
 

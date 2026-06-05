@@ -37,3 +37,10 @@ T5. 保留用户原始提示到 shell history ✅
   - wrapper 和 systemWrapper 中在 history -s 前添加 history -a
   - history -a 将当前内存中的历史行（用户的 ai ... 输入）追加到历史文件
   - history -s 再将 AI 生成的命令作为新条目添加
+
+T18. shell install 更新已存在的 wrapper ✅
+  - 新增 replaceWrapper() 辅助函数，提取 marker 之间的完整内容（含 marker）与当前常量比较
+  - 用户安装：wrapper 内容不同时 os.WriteFile 更新 .bashrc，相同时跳过
+  - 系统安装：sudo cat 读取 /etc/profile.d/aicli.sh，不同时 writeSystemProfile() 更新
+  - 新增 writeSystemProfile() 辅助函数，提取 temp file + sudo mv + chmod 逻辑
+  - 标记损坏（有开始无结束）当作不存在，fall through 到追加逻辑自愈
