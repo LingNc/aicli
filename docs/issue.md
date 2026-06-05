@@ -10,6 +10,14 @@ T6. 包装screen的界面库，做一个简单的raw的操作方式的，方便�
 T7. 全平台适配，适配win/mac/linux/android...
 T8. 错误信息的回传处理。
 T11. 增加一个update 命令，用于自动更新当前软件。
+  1. 分为update release/update 默认就是release，从github的release下载对应平台的二进制
+  2. update dev，从github拉取最新的一次状态，本地构建，检测构建工具等。
 T12. $./aicli 追加docs/issue.md中添加T11.问题，我希望增加一个update命令来 自动更新当前软件                                                     $ echo "## T11. 问题\n\n### 需求\n增加一个 `update` 命令，用于自动更 新当前软件。\n\n### 描述\n用户希望有一个便捷的 `update` 命令，能够自 动检测并更新当前软件到最新版本。\n" >> docs/issue.md                 bash: 行 1: update: 未找到命令                                       bash: 行 1: update: 未找到命令命令执行时转义问题。
 T13. 简单的记忆和上下文功能。长上下文，可以压缩等查找功能。并且支持切换管理，会话窗口配置项，压缩自动触发也可以手动触发，触发的时候保留之前的相当于在一个新的了。
-T14. aicli运行出来的命令结果无颜色，没有正常的终端色彩。    
+T14. aicli运行出来的命令结果无颜色，没有正常的终端色彩。
+T15. 增加i18n的双语支持。
+T16. 配置系统清理：消除"补丁叠补丁"，让 struct 成为唯一真相源。
+  1. 运行时只用 typed struct，删掉 config.go 的 map[string]interface{} 原始访问路径
+  2. fillDefaults 填充所有字段，删掉 skip 列表
+  3. 构造器不提供默认值，由配置系统保证
+  4. default.yaml 只作迁移模板，运行时不读取

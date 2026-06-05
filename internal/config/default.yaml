@@ -3,7 +3,7 @@ config_version: "1.1"
 api_key: ""
 base_url: "https://api.openai.com"
 model: "gpt-4o"
-mode: "ai"           # ai | rules | permissive
+mode: "ai"           # ai | rules | permissive 优先
 
 # ──── 用户白名单（ai 模式直接执行）────
 whitelist: []
@@ -49,7 +49,9 @@ thinking_body:
   }
 
 # ──── 思考显示配置 ────
+# 思考占据的最大行数
 thinking_lines: 3
+# 0 标识默认终端显示的宽度
 thinking_line_len: 0
 
 # ──── 超时配置（秒）────
