@@ -28,14 +28,8 @@ type Client struct {
 
 // New 创建 LLM 客户端
 func New(cfg *config.Config) *Client {
-	apiTimeout := 300
-	if cfg.APITimeout > 0 {
-		apiTimeout = cfg.APITimeout
-	}
-	streamTimeout := 30
-	if cfg.StreamTimeout > 0 {
-		streamTimeout = cfg.StreamTimeout
-	}
+	apiTimeout := *cfg.APITimeout
+	streamTimeout := *cfg.StreamTimeout
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,

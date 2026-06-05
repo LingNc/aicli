@@ -1,8 +1,8 @@
 # ──── aicli 默认配置 ────
 config_version: "1.1"
 api_key: ""
-base_url: "https://api.openai.com"
-model: "gpt-4o"
+base_url: "https://api.deepseek.com"
+model: "deepseek-v4-flash"
 mode: "ai"           # ai | rules | permissive 优先
 
 # ──── 用户白名单（ai 模式直接执行）────

@@ -71,17 +71,9 @@ func fillDefaults(cfg *Config) {
 	t := cfgV.Type()
 
 	for i := 0; i < t.NumField(); i++ {
-		if t.Field(i).Name == "RequestBody" {
-			continue // 请求体不自动填充
-		}
-		if t.Field(i).Name == "ThinkingBody" {
-			continue // 思考模式请求体不自动填充
-		}
-		if t.Field(i).Name == "ThinkingLines" || t.Field(i).Name == "ThinkingLineLen" {
-			continue // 构造器中有默认值回退，避免 0 被覆盖
-		}
-		if t.Field(i).Name == "APITimeout" || t.Field(i).Name == "StreamTimeout" || t.Field(i).Name == "ExecTimeout" {
-			continue // 调用处有默认值回退，避免 0 被覆盖
+		fieldName := t.Field(i).Name
+		if fieldName == "RequestBody" || fieldName == "ThinkingBody" {
+			continue
 		}
 		field := cfgV.Field(i)
 		if field.IsZero() {

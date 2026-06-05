@@ -32,12 +32,6 @@ type ThinkingDisplay struct {
 
 // NewThinkingDisplay 创建思考显示组件。
 func NewThinkingDisplay(maxLines, maxLineLen int) *ThinkingDisplay {
-	if maxLines <= 0 {
-		maxLines = 3
-	}
-	if maxLineLen < 0 {
-		maxLineLen = 30
-	}
 	return &ThinkingDisplay{
 		maxLines:   maxLines,
 		maxLineLen: maxLineLen,

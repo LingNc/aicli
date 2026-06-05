@@ -262,7 +262,7 @@ func run() int {
 	// 思考模式显示
 	var thinkDisplay *display.ThinkingDisplay
 	if think {
-		thinkDisplay = display.NewThinkingDisplay(cfg.ThinkingLines, cfg.ThinkingLineLen)
+		thinkDisplay = display.NewThinkingDisplay(cfg.ThinkingLines, *cfg.ThinkingLineLen)
 		thinkDisplay.Start()
 	}
 
@@ -384,7 +384,7 @@ func run() int {
 	}
 
 	// 12. 执行命令
-	_, exitCode, err := executor.Execute(finalCommand, cfg.ExecTimeout)
+	_, exitCode, err := executor.Execute(finalCommand, *cfg.ExecTimeout)
 	if err != nil {
 		log.Error("命令执行失败: %v", err)
 		return 1
