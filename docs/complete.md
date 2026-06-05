@@ -58,3 +58,9 @@ T14.[必须使用交互式终端才可以 -> T26] 命令输出无颜色。暂时
 T22. 失败命令不应写入历史记录 ✅
   - tmpfile 写入前检查 exitCode == 0，非零退出码不写入
   - 防止执行失败或被中断的命令进入 shell history
+
+T11. update 命令自动更新 ✅
+  - update release（默认）：查询 GitHub API 获取最新 release，下载匹配平台的二进制（aicli-{os}-{arch}），原子替换
+  - update dev：检查 go/git，clone 或 fetch+reset 到 ~/.aicli/repo，本地编译替换
+  - -dev 后缀版本始终触发更新，语义版本比较（1.12 > 1.11）
+  - /usr/ 路径自动使用 sudo install，403 限流提示，无匹配资产回退到 plain aicli

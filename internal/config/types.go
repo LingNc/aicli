@@ -24,4 +24,5 @@ type Config struct {
 	APITimeout        *int           `yaml:"api_timeout"`
 	StreamTimeout     *int           `yaml:"stream_timeout"`
 	ExecTimeout       *int           `yaml:"exec_timeout"`
+	NetTimeout        *int           `yaml:"net_timeout"`         // 网络请求超时（秒）
 }

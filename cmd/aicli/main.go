@@ -14,6 +14,7 @@ import (
 	"github.com/lingnc/aicli/internal/log"
 	"github.com/lingnc/aicli/internal/rules"
 	"github.com/lingnc/aicli/internal/shell"
+	"github.com/lingnc/aicli/internal/update"
 	"github.com/lingnc/aicli/internal/utils"
 	"golang.org/x/term"
 )
@@ -50,6 +51,12 @@ func parseArgs(args []string) (debug bool, showDebug bool, showVersion bool, thi
 				subAction = args[i+1]
 				i++ // 跳过 subAction
 			}
+		} else if arg == "update" {
+			subcommand = "update"
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				subAction = args[i+1]
+				i++
+			}
 		} else {
 			if userInput != "" {
 				userInput += " "
@@ -74,6 +81,8 @@ func showHelp() {
 	printOption("log", "打开最新的调试日志")
 	printOption("shell install", "安装 shell 集成")
 	printOption("shell uninstall", "卸载 shell 集成")
+	printOption("update [release]", "从 GitHub Release 更新到最新版本")
+	printOption("update dev", "从 main 分支本地构建最新开发版本")
 	fmt.Fprintf(w, "\n选项:\n")
 	printOption("-v, --version", "显示版本号")
 	printOption("-d, --debug", "启用调试日志")
@@ -208,6 +217,32 @@ func run() int {
 			}
 		default:
 			log.Info("用法: ai shell [install | uninstall]")
+			return 1
+		}
+		return 0
+	}
+
+	if subcommand == "update" {
+		if subAction == "" {
+			subAction = "release"
+		}
+		switch subAction {
+		case "release":
+			netTimeout := 15
+			if cfg.NetTimeout != nil && *cfg.NetTimeout > 0 {
+				netTimeout = *cfg.NetTimeout
+			}
+			if err := update.Release(version, netTimeout); err != nil {
+				log.Error("[Update] %v", err)
+				return 1
+			}
+		case "dev":
+			if err := update.Dev(version); err != nil {
+				log.Error("[Update] %v", err)
+				return 1
+			}
+		default:
+			log.Info("用法: ai update [release | dev]")
 			return 1
 		}
 		return 0

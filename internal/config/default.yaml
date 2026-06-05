@@ -58,3 +58,4 @@ thinking_line_len: 0
 api_timeout: 300        # 首字节超时（发请求到收到第一个 chunk，排队场景需要较长时间）
 exec_timeout: 30        # 命令执行超时
 stream_timeout: 30      # 流式 chunk 间超时（两个 chunk 之间的最大间隔）
+net_timeout: 15           # 网络请求超时（update 等）

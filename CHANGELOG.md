@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [v0.1.4] - 2026-06-05
 
+### Added
+- T11: `update` 命令 — `update release` 从 GitHub Release 下载最新版本，`update dev` 从 main 分支本地构建
+
 ### Fixed
 - T2: 配置迁移保留用户 slice 和嵌套 map 数据 — whitelist/forbidden_patterns/thinking_body 不再丢失
 - T5: shell history 保留用户原始提示 — `history -a` + `echo >> HISTFILE` + `history -n` 替代会删除条目的 `history -s`
