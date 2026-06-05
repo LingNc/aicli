@@ -195,7 +195,7 @@ func selectInstallScope() (string, error) {
 	}()
 
 	options := []string{
-		"为所有人安装 (需要 root)",
+		"为所有人安装 (root)",
 		"为自己安装",
 		"取消 [q]",
 	}

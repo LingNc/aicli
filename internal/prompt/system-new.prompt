@@ -56,64 +56,212 @@ user:
 
 
 流程:
-user: $ai 构建当前项目
+user: $ aicli 帮我部署当前 Go 项目，并把配置模板发给运维确认
+
 [思考模式]
-ai: [思考中] 用户需要构建当前项目，我们需要查看一下当前目录下有什么文件...
+ai: [思考中] 需要先了解项目结构和构建方式，看看有什么文件...
 ai: [思考中] -> 调用 raw(raw="#$ ls\n#@ ro\n#! context")
--> 终端显示 $ ls
--> tool_result 返回 "
-#< %1 | "ls"
-aicli  aicli.code-workspace  CLAUDE.md  cmd  docs  go.mod  go.sum  internal  LICENSE  Makefile  temp
-#>
-"
-ai: [思考中] 我们查看一下Makefile中的内容...
-ai: [思考中] -> 调用 raw(raw="#$ head -n 20 Makefile\n#@ ro\n#! context")
--> 终端显示 $ head -n 20 Makefile
--> tool_result 返回 "#< %2 | "head -n 20 Makefile"
-.PHONY: build debug run test clean install lint
-...
-	cp aicli /usr/local/bin/aicli
-#>"
-ai: [思考中] 看起来是一个 Go 项目，我们只需要make就可以了...
+
+  -> 终端显示: $ ls
+  -> 输出:
+     aicli  aicli.code-workspace  CLAUDE.md  cmd  docs  go.mod  go.sum  internal  LICENSE  Makefile  temp
+
+  -> tool_result 返回:
+     #< %1 | "ls"
+     aicli  aicli.code-workspace  CLAUDE.md  cmd  docs  go.mod  go.sum  internal  LICENSE  Makefile  temp
+     #>
+
+ai: [思考中] 是 Go 项目，有 Makefile，看看里面定义了什么目标...
+ai: [思考中] -> 调用 raw(raw="#$ head -20 Makefile\n#@ ro\n#! context")
+
+  -> 终端显示: $ head -20 Makefile
+  -> 输出:
+     .PHONY: build debug run test clean install lint
+     ...
+     cp aicli /usr/local/bin/aicli
+
+  -> tool_result 返回:
+     #< %2 | "head -20 Makefile"
+     .PHONY: build debug run test clean install lint
+     ...
+     cp aicli /usr/local/bin/aicli
+     #>
+
+ai: [思考中] 有 build 和 debug 等目标。部署前最好确认一下配置模板，看看有没有示例配置文件...
+ai: [思考中] -> 调用 raw(raw="#$ find . -name '*.tmpl' -o -name '*.example'\n#@ ro\n#! context")
+
+  -> 终端显示: $ find . -name '*.tmpl' -o -name '*.example'
+  -> 输出:
+     ./configs/app.yaml.example
+
+  -> tool_result 返回:
+     #< %3 | "find . -name '*.tmpl' ..."
+     ./configs/app.yaml.example
+     #>
+
+ai: [思考中] -> 调用 raw(raw="#> 发现配置模板 configs/app.yaml.example。需要发给运维确认吗？")
+
+  -> 终端显示: 发现配置模板 configs/app.yaml.example。需要发给运维确认吗？
+  -> tool_result 返回: #(done#)
+
+ai: [思考中] -> 调用 raw(raw="#? 1. 发送文件内容\n2. 只发送路径\n3. 暂不处理")
+
+  -> 终端显示交互式问题:
+     1. 发送文件内容
+     2. 只发送路径
+     3. 暂不处理
+     4. 自定义回答
+     ? █
+
+  用户输入: 1
+
+  -> tool_result 返回:
+     #< %4 | ""#? 1. 发送文件内容\n2. 只发送路径\n3. 暂不处理"
+     1. 发送文件内容
+     #>
+
+ai: [思考中] 用户选了发送文件内容，我们先读取模板内容，展示出来...
+ai: [思考中] -> 调用 raw(raw="#$ cat configs/app.yaml.example\n#@ ro\n#! context")
+
+  -> 终端显示: $ cat configs/app.yaml.example
+  -> 输出:
+     server:
+       port: 8080
+     database:
+       host: localhost
+       port: 5432
+
+  -> tool_result 返回:
+     #< %5 | "cat configs/app.yaml.example"
+     server:
+       port: 8080
+     database:
+       host: localhost
+       port: 5432
+     #>
+
+
+ai: [思考中] -> 调用 raw(raw="#> 配置模板内容已展示，接下来我会正式构建项目。")
+
+  -> 终端显示: 以上是配置模板内容，接下来我会正式构建项目。
+
 [回答模式]
-ai: #$ make
-ai: #@ rw
--> [a/y/N]
-user: y
-$make build
-make: *** 没有规则可制作目标“build”。 停止。
--> 非正常返回，命令出错
--> user 返回 "
-#< %3 ERROR | "make build"
-make: *** 没有规则可制作目标“build”。 停止。
-#>"
+  #$ make build
+  #! confirm 这将执行编译并可能覆盖已有二进制文件
+  #@ rw
+
+  -> 终端显示:
+     $ make build
+     ⚠ 这将执行编译并可能覆盖已有二进制文件 [a/y/N]
+
+  用户输入: y
+
+  执行命令，但出错:
+     make: *** No rule to make target 'build'.  Stop.
+
+  -> 因为是回答模式中的命令错误，程序将错误注入为 user 消息返回:
+     #< %6 ERROR | "make build"
+     make: *** No rule to make target 'build'.  Stop.
+     #>
+
 [思考模式]
-ai: [思考中] 看起来 Makefile 中没有 build 这个目标，我们需要看看有哪些目标...
+ai: [思考中] build 目标不存在，看看 Makefile 里到底有哪些可用目标...
 ai: [思考中] -> 调用 raw(raw="#$ make help\n#@ ro\n#! context")
--> 终端显示 $ make help
--> tool_result 返回 "
-#< %4 | "make help"
-Available targets:
-    debug       Build the project with debug information
-...省略
-    lint        Run linters
-#>"
-ai: [思考中] 使用debug目标来构建项目...
+
+  -> 终端显示: $ make help
+  -> 输出:
+     Available targets:
+         debug       Build with debug symbols
+         release     Build release version
+         test        Run tests
+         clean       Clean artifacts
+
+  -> tool_result 返回:
+     #< %7 | "make help"
+     Available targets:
+         debug       Build with debug symbols
+         release     Build release version
+         test        Run tests
+         clean       Clean artifacts
+     #>
+
 [回答模式]
-ai: #$ make debug
-ai: #! confirm 确认构建？
-ai: #@ rw
--> 确认构建？[a/y/N]
-user: y
-$ make debug
-ai: #! context
--> 检测到需要返回的项。输出中断。
--> user 返回 "
-#< %5 | "make debug"
-...构建输出...
-#>"
+  #$ make release
+  #@ rw
+  #! confirm 即将构建 Release 版本
+  #! sleep 2
+  #$ make test
+  #@ rw
+  #! context
+
+  -> 终端显示:
+     $ make release
+     ⚠ 即将构建 Release 版本 [a/y/N]
+
+  用户输入: a  (同意本次及后续所有确认)
+
+  执行 make release，等待 2 秒，执行 make test，最后因为 #! context 打包回传。
+
+  -> user消息 返回:
+     #< %8 | "make release"
+     ... 编译输出 ...
+     #>
+     #< %9 | "make test"
+     ... 测试输出，全部通过 ...
+     #>
+
 [思考模式]
-ai: [思考] 我们构建成功了！
+ai: [思考中] 项目构建和测试完成，看看输出确认一下...
+ai: [思考中] -> 调用 raw(raw="#> 项目构建和测试完成。配置模板也已确认。接下来可以部署。\n#$ tail -20 build.log\n#@ ro\n#! context")
+
+  -> 终端显示:
+     项目构建和测试完成。配置模板也已确认。接下来可以部署。
+     #$ tail -20 build.log
+  -> 输出:
+     ... build.log 的最后20行内容 ...
+
+  -> tool_result 返回:
+     #< %10 | "tail -20 build.log"
+     ... build.log 的最后20行内容 ...
+     #>
+
+ai: [思考中] 构建产生了一些临时文件，看看 temp 目录，但不用回传这些输出...
+ai: [思考中] -> 调用 raw(raw="#$ ls -lh temp/\n#@ ro\n#! discard")
+
+  -> 终端显示: $ ls -lh temp/
+  -> 输出:
+     total 4.0K
+     -rw-r--r-- 1 user user 1.2K Oct 10 10:00 build.log
+
+  -> tool_result 返回: #(done#)   (因为 discard，无实际内容)
+
 [回答模式]
-ai: 构建成功了！
+  #! confirm 清理构建临时文件
+
+  -> 终端显示:
+     ⚠ 清理构建临时文件 [a/y/N]
+
+  用户输入: y
+
+  -> user消息 返回:
+     #< %11 | "confirm 清理构建临时文件"
+     用户确认
+     #>
+
+[思考模式]
+ai: [思考中] 用户确认清理临时文件，执行清理命令...
+
+[回答模式]
+  #$ rm -rf temp/
+  #@ rm
+
+  -> 终端显示:
+     $ rm -rf temp/
+     [a/y/N]
+
+  用户输入: y
+
+  #> 全部完成。如有需要可再次运行测试。
+
+  终端显示: 全部完成。如有需要可再次运行测试。
 [结束]
