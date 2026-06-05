@@ -21,9 +21,9 @@ type ThinkingDisplay struct {
 	rows       [][]rune
 	maxLines   int
 	maxLineLen int
-	effWidth   int
-	rendered   bool
-	active     bool
+	effWidth       int
+	lastRenderLines int
+	active         bool
 	stopCh     chan struct{}
 	mu         sync.Mutex
 	wg         sync.WaitGroup
@@ -124,13 +124,13 @@ func (d *ThinkingDisplay) Stop() {
 	}
 	d.active = false
 	close(d.stopCh)
-	rendered := d.rendered
+	lastRenderLines := d.lastRenderLines
 	d.mu.Unlock()
 
 	// 等待 spin goroutine 退出（持锁等待会与 render 的锁死锁）
 	d.wg.Wait()
-	if rendered {
-		fmt.Fprintf(os.Stderr, "\033[%dA\r\033[J", d.maxLines+1)
+	if lastRenderLines > 0 {
+		fmt.Fprintf(os.Stderr, "\033[%dA\r\033[J", lastRenderLines)
 	}
 }
 
@@ -148,7 +148,7 @@ func (d *ThinkingDisplay) spin() {
 	}
 }
 
-// render 始终输出 maxLines+1 行。
+// render 动态输出 spinner + 已填充的内容行。
 func (d *ThinkingDisplay) render() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -158,18 +158,20 @@ func (d *ThinkingDisplay) render() {
 	elapsed := time.Since(d.startTime).Seconds()
 	frame := spinnerFrames[d.spinnerIdx%len(spinnerFrames)]
 	d.spinnerIdx++
-	if d.rendered {
-		fmt.Fprintf(os.Stderr, "\033[%dA", d.maxLines+1)
+	if d.lastRenderLines > 0 {
+		fmt.Fprintf(os.Stderr, "\033[%dA", d.lastRenderLines)
 	}
 	fmt.Fprintf(os.Stderr, "\r\033[K%s 思考中[%.1fs]\n", frame, elapsed)
+	contentLines := 0
 	for i := 0; i < d.maxLines; i++ {
-		if i < len(d.rows) {
+		if i < len(d.rows) && len(d.rows[i]) > 0 {
 			fmt.Fprintf(os.Stderr, "\r\033[K\033[38;5;245m  %s\033[0m\n", string(d.rows[i]))
+			contentLines++
 		} else {
-			fmt.Fprintf(os.Stderr, "\r\033[K\n")
+			break
 		}
 	}
-	d.rendered = true
+	d.lastRenderLines = 1 + contentLines // 1 for spinner line
 }
 
 // runeWidth 返回 rune 的终端显示宽度（CJK/全角=2，其他=1）。
