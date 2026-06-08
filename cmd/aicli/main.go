@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -427,7 +428,7 @@ func run() int {
 
 	// 12.1 写入临时文件供 shell 集成读取；失败不影响主流程
 	if exitCode == 0 {
-		tmpfile := "/tmp/ai-cmd-" + strconv.Itoa(os.Getppid()) + ".txt"
+		tmpfile := filepath.Join(os.TempDir(), "ai-cmd-"+strconv.Itoa(os.Getppid())+".txt")
 		os.WriteFile(tmpfile, []byte(finalCommand), 0644)
 		log.Debug("写入临时文件: %s", tmpfile)
 	}
